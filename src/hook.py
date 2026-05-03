@@ -252,7 +252,7 @@ def main() -> int:
                 pending.append({"ts": _now_iso(), "cwd": cwd, "parent_sid": sid})
         elif event == "SubagentStop" and source_name != "codex":
             sess["active_subagent_count"] = max(0, sess.get("active_subagent_count", 0) - 1)
-        elif event == "PreToolUse" and payload.get("tool_name") == "Bash":
+        elif event == "PreToolUse" and payload.get("tool_name") == "Bash" and not payload.get("agent_id"):
             if not sess.get("active_bash"):
                 sess["active_bash"] = True
                 if sess.get("status") == "idle":
