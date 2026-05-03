@@ -257,11 +257,11 @@ def main() -> int:
                 sess["active_bash"] = True
                 if sess.get("status") == "idle":
                     sess["status"] = "running"
-        elif event in ("PermissionDenied", "PostToolUse"):
+        elif event in ("PermissionDenied", "PostToolUse") and not payload.get("agent_id"):
             sess["needs_attention"] = False
             if payload.get("tool_name") == "Bash":
                 sess["active_bash"] = False
-        elif event == "PostToolUseFailure" and payload.get("tool_name") == "Bash":
+        elif event == "PostToolUseFailure" and payload.get("tool_name") == "Bash" and not payload.get("agent_id"):
             sess["active_bash"] = False
 
         save_state(state)
