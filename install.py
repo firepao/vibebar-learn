@@ -28,7 +28,6 @@ CODEX_CONFIG_PATH = Path.home() / ".codex" / "config.toml"
 STATE_DIR = Path(os.environ["LOCALAPPDATA"]) / "VibeBar"
 PYTHON_PATH_FILE = REPO_DIR / ".python-path"
 HOOK_SCRIPT = REPO_DIR / "src" / "hook.py"
-CODEX_HOOK_PS1 = REPO_DIR / "src" / "codex_hook.ps1"
 
 HOOK_EVENTS = {
     "SessionStart":      {"matcher": "startup|resume"},
@@ -50,8 +49,9 @@ CODEX_HOOK_EVENTS = {
     "SessionStart": {},
     "UserPromptSubmit": {},
     "Stop": {},
-    "PreToolUse": {"matcher": ".*"},
-    "PostToolUse": {"matcher": ".*"},
+    "PreToolUse": {"matcher": "Bash"},
+    "PostToolUse": {"matcher": "Bash"},
+    "PostToolUseFailure": {"matcher": "Bash"},
     "PermissionRequest": {"matcher": ".*"},
 }
 
@@ -88,7 +88,7 @@ def _load_hooks_json(path: Path) -> dict:
     return {}
 
 
-def _inject_events(hooks_root: dict, events: dict, hook_cmd: str) -> None:
+def _inject_events(hooks_root: dict, events: dict, hook_cmd: str, timeout: int = 2) -> None:
     for event, extra in events.items():
         existing = hooks_root.get(event, [])
         if not isinstance(existing, list):
@@ -97,7 +97,7 @@ def _inject_events(hooks_root: dict, events: dict, hook_cmd: str) -> None:
             g for g in existing
             if not any(_is_vibe_entry(h.get("command", "")) for h in g.get("hooks", []))
         ]
-        new_group: dict = {"hooks": [{"type": "command", "command": hook_cmd, "timeout": 2}]}
+        new_group: dict = {"hooks": [{"type": "command", "command": hook_cmd, "timeout": timeout}]}
         if "matcher" in extra:
             new_group["matcher"] = extra["matcher"]
         cleaned.append(new_group)
@@ -118,39 +118,12 @@ def inject_hooks(python_path: str) -> None:
 def inject_codex_hooks(python_path: str) -> None:
     data = _load_hooks_json(CODEX_HOOKS_PATH)
 
-    python_exe = str(Path(python_path).parent / "python.exe")
-    hook_script = str(HOOK_SCRIPT)
-    CODEX_HOOK_PS1.write_text(
-        f'$env:VIBEBAR_SOURCE = "codex"\n'
-        f'if ([Console]::IsInputRedirected) {{\n'
-        f'    $ms = New-Object System.IO.MemoryStream\n'
-        f'    [Console]::OpenStandardInput().CopyTo($ms)\n'
-        f'    $stdinData = [System.Text.UTF8Encoding]::new($false).GetString($ms.ToArray())\n'
-        f'}} else {{\n'
-        f'    $stdinData = ""\n'
-        f'}}\n'
-        f'$hookScript = "{hook_script}"\n'
-        f'$psi = New-Object System.Diagnostics.ProcessStartInfo\n'
-        f'$psi.FileName = "{python_exe}"\n'
-        f'$psi.Arguments = "`"$hookScript`""\n'
-        f'$psi.UseShellExecute = $false\n'
-        f'$psi.RedirectStandardInput = $true\n'
-        f'try {{\n'
-        f'    $proc = [System.Diagnostics.Process]::Start($psi)\n'
-        f'    if ($null -eq $proc) {{ exit 1 }}\n'
-        f'    $stdinBytes = [System.Text.UTF8Encoding]::new($false).GetBytes($stdinData)\n'
-        f'    $proc.StandardInput.BaseStream.Write($stdinBytes, 0, $stdinBytes.Length)\n'
-        f'    $proc.StandardInput.Close()\n'
-        f'    if (-not $proc.WaitForExit(10000)) {{ $proc.Kill(); exit 1 }}\n'
-        f'    exit $proc.ExitCode\n'
-        f'}} catch {{ exit 1 }}\n',
-        encoding="utf-8",
-    )
-    print(f"[ok] codex_hook.ps1: {CODEX_HOOK_PS1}")
-    ps1 = str(CODEX_HOOK_PS1).replace("\\", "/")
+    python_exe = str(Path(python_path).parent / "python.exe").replace("\\", "/")
+    hs = str(HOOK_SCRIPT).replace("\\", "/")
+    hook_cmd = f'"{python_exe}" "{hs}" --source=codex'
 
     hooks_root = data.setdefault("hooks", {})
-    _inject_events(hooks_root, CODEX_HOOK_EVENTS, f'powershell.exe -NoProfile -NonInteractive -File "{ps1}"')
+    _inject_events(hooks_root, CODEX_HOOK_EVENTS, hook_cmd, timeout=5)
     CODEX_HOOKS_PATH.parent.mkdir(parents=True, exist_ok=True)
     CODEX_HOOKS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[ok] codex hooks injected: {CODEX_HOOKS_PATH}")

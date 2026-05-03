@@ -130,14 +130,24 @@ def main() -> int:
         sys.stdin.reconfigure(encoding="utf-8", errors="replace")
     raw = ""
     try:
-        raw = sys.stdin.read().lstrip('\ufeff')
+        raw = sys.stdin.readline().lstrip('\ufeff')
         payload = json.loads(raw) if raw.strip() else {}
     except Exception:
         payload = {}
 
     debug_log(raw, payload)
 
-    source_name = os.environ.get("VIBEBAR_SOURCE", "claude")
+    source_name = "claude"
+    _args = iter(sys.argv[1:])
+    for _arg in _args:
+        if _arg.startswith("--source="):
+            source_name = _arg.split("=", 1)[1] or "claude"
+            break
+        if _arg == "--source":
+            source_name = next(_args, "claude")
+            break
+    if source_name == "claude":
+        source_name = os.environ.get("VIBEBAR_SOURCE", "claude")
     original_sid = str(payload.get("session_id", "")).strip() or "unknown"
     sid = f"codex:{original_sid}" if source_name == "codex" else original_sid
     event = str(payload.get("hook_event_name", "")).strip()
@@ -248,6 +258,8 @@ def main() -> int:
             sess["active_subagent_count"] = max(0, sess.get("active_subagent_count", 0) - 1)
         elif event == "PreToolUse" and payload.get("tool_name") == "Bash":
             sess["active_bash"] = True
+            if sess.get("status") == "idle":
+                sess["status"] = "running"
         elif event in ("PermissionDenied", "PostToolUse"):
             sess["needs_attention"] = False
             if payload.get("tool_name") == "Bash":
