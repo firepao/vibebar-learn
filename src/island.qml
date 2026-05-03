@@ -54,9 +54,21 @@ Window {
             onTriggered: island.displayCount = sessionsModel.sessionCount
         }
 
+        property real _maskH: 0   // last height committed to Win32 mask
+
         height: expanded ? expandedH : collapsedH
         Behavior on height {
-            NumberAnimation { duration: island.animDur; easing.type: Easing.OutCubic }
+            NumberAnimation {
+                id: heightAnim
+                duration: island.animDur; easing.type: Easing.OutCubic
+                onRunningChanged: {
+                    // When animation ends while expanded: commit final height to mask
+                    if (!running && island.expanded) {
+                        island._maskH = island.height
+                        bridge.onExpandStart(island.height)
+                    }
+                }
+            }
         }
 
         Timer {
@@ -68,13 +80,18 @@ Window {
         onExpandedChanged: {
             if (expanded) {
                 collapseShrinkTimer.stop()
+                _maskH = expandedH
                 bridge.onExpandStart(expandedH)
             } else {
                 collapseShrinkTimer.restart()
             }
         }
         onHeightChanged: {
-            if (expanded) bridge.onExpandStart(height)
+            // Only grow the mask in real-time; shrink is handled by heightAnim.onRunningChanged
+            if (expanded && height > _maskH) {
+                _maskH = height
+                bridge.onExpandStart(height)
+            }
         }
 
         radius: Math.round(12 * sf)
