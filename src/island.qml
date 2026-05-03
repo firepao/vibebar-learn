@@ -62,7 +62,6 @@ Window {
                 id: heightAnim
                 duration: island.animDur; easing.type: Easing.OutCubic
                 onRunningChanged: {
-                    // When animation ends while expanded: commit final height to mask
                     if (!running && island.expanded) {
                         island._maskH = island.height
                         bridge.onExpandStart(island.height)
@@ -87,7 +86,6 @@ Window {
             }
         }
         onHeightChanged: {
-            // Only grow the mask in real-time; shrink is handled by heightAnim.onRunningChanged
             if (expanded && height > _maskH) {
                 _maskH = height
                 bridge.onExpandStart(height)

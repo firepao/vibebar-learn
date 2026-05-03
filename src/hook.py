@@ -138,13 +138,9 @@ def main() -> int:
     debug_log(raw, payload)
 
     source_name = "claude"
-    _args = iter(sys.argv[1:])
-    for _arg in _args:
+    for _arg in sys.argv[1:]:
         if _arg.startswith("--source="):
             source_name = _arg.split("=", 1)[1] or "claude"
-            break
-        if _arg == "--source":
-            source_name = next(_args, "claude")
             break
     if source_name == "claude":
         source_name = os.environ.get("VIBEBAR_SOURCE", "claude")
@@ -257,9 +253,10 @@ def main() -> int:
         elif event == "SubagentStop" and source_name != "codex":
             sess["active_subagent_count"] = max(0, sess.get("active_subagent_count", 0) - 1)
         elif event == "PreToolUse" and payload.get("tool_name") == "Bash":
-            sess["active_bash"] = True
-            if sess.get("status") == "idle":
-                sess["status"] = "running"
+            if not sess.get("active_bash"):
+                sess["active_bash"] = True
+                if sess.get("status") == "idle":
+                    sess["status"] = "running"
         elif event in ("PermissionDenied", "PostToolUse"):
             sess["needs_attention"] = False
             if payload.get("tool_name") == "Bash":

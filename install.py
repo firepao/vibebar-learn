@@ -28,6 +28,7 @@ CODEX_CONFIG_PATH = Path.home() / ".codex" / "config.toml"
 STATE_DIR = Path(os.environ["LOCALAPPDATA"]) / "VibeBar"
 PYTHON_PATH_FILE = REPO_DIR / ".python-path"
 HOOK_SCRIPT = REPO_DIR / "src" / "hook.py"
+HOOK_SCRIPT_POSIX = str(HOOK_SCRIPT).replace("\\", "/")
 
 HOOK_EVENTS = {
     "SessionStart":      {"matcher": "startup|resume"},
@@ -108,8 +109,7 @@ def inject_hooks(python_path: str) -> None:
     data = _load_hooks_json(SETTINGS_PATH)
     hooks_root = data.setdefault("hooks", {})
     py = str(python_path).replace("\\", "/")
-    hs = str(HOOK_SCRIPT).replace("\\", "/")
-    _inject_events(hooks_root, HOOK_EVENTS, f'"{py}" "{hs}"')
+    _inject_events(hooks_root, HOOK_EVENTS, f'"{py}" "{HOOK_SCRIPT_POSIX}"')
     SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
     SETTINGS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[ok] hooks injected: {SETTINGS_PATH}")
@@ -119,8 +119,7 @@ def inject_codex_hooks(python_path: str) -> None:
     data = _load_hooks_json(CODEX_HOOKS_PATH)
 
     python_exe = str(Path(python_path).parent / "python.exe").replace("\\", "/")
-    hs = str(HOOK_SCRIPT).replace("\\", "/")
-    hook_cmd = f'"{python_exe}" "{hs}" --source=codex'
+    hook_cmd = f'"{python_exe}" "{HOOK_SCRIPT_POSIX}" --source=codex'
 
     hooks_root = data.setdefault("hooks", {})
     _inject_events(hooks_root, CODEX_HOOK_EVENTS, hook_cmd, timeout=5)

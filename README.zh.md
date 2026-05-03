@@ -67,14 +67,15 @@ cscript.exe vibebar.vbs
 | `PermissionDenied`                     | 清除关注标记                                                                                                                                                           |
 | `SubagentStart` / `SubagentStop`     | 追踪后台代理数量（蓝点）；若 `agent_type` 含 `codex`，按 `cwd` 写入一条 pending 记录（10 秒内有效），下一个相同 cwd 的 Codex `SessionStart` 消费后自动标为隐藏 |
 
-5. 生成 `src/codex_hook.ps1` 并注入 `%USERPROFILE%\.codex\hooks.json`，同时在 `%USERPROFILE%\.codex\config.toml` 中启用 `codex_hooks = true`：
+5. 注入 `%USERPROFILE%\.codex\hooks.json`，并在 `%USERPROFILE%\.codex\config.toml` 中启用 `codex_hooks = true`。Hook 直接调用 `python.exe hook.py --source=codex`，无需 PowerShell 包装层。
 
-| 事件                                                     | 用途                                                                                |
-| -------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `SessionStart`                                         | 注册 Codex 会话（CX 卡片）；若被 `SubagentStart` 预标记为 rescue agent 则自动隐藏 |
-| `UserPromptSubmit`                                     | 标记运行中，记录提示词                                                              |
-| `Stop`                                                 | 标记空闲，返回 `{"continue": true}`                                               |
-| `PreToolUse` / `PostToolUse` / `PermissionRequest` | 同步 Claude Code 行为                                                               |
+| 事件 | 用途 |
+|---|---|
+| `SessionStart` | 注册 Codex 会话（CX 卡片）；若被 `SubagentStart` 预标记为 rescue agent 则自动隐藏 |
+| `UserPromptSubmit` | 标记运行中，记录提示词 |
+| `Stop` | 标记空闲，返回 `{"continue": true}` |
+| `PreToolUse` / `PostToolUse` / `PostToolUseFailure` | 仅 Bash 工具触发 — 追踪活跃 Bash、空闲升为运行中 |
+| `PermissionRequest` | 红点，需要关注 |
 
 > `install.py` 幂等，重复运行安全，不会重复添加 hook 条目。
 
@@ -122,6 +123,9 @@ vibe-bar/
 - [X] **Codex 后台蓝点** — 用 parent_sid 追踪替代 cwd 启发式，CC 卡片在 Codex 进程真正停止前保持蓝色
 - [X] **僵尸 session 清理** — 4 小时无 hook 的 primary session 自动标为 idle，不再造成永久蓝点
 - [X] **空状态卡片** — 无 session 时显示卡片样式占位符，支持拖动
+- [X] **Codex hook 可靠性** — 直接调用 `python.exe --source=codex` 替代 PowerShell 包装层；`readline()` 修复 stdin 阻塞；PreToolUse/PostToolUse 限定为仅 Bash 工具触发，消除超时风暴
+- [X] **`/goal` 紫色圆点** — PreToolUse Bash 将 idle 升为 running，通过 `/goal` 启动的 Codex 任务正确显示运行色
+- [X] **流畅删卡动画** — 收缩动画期间 Win32 mask 保持旧尺寸，动画结束后才更新，消除"先裁剪再下移"视觉 bug
 
 ## 许可证
 

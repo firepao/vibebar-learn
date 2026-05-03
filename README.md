@@ -67,14 +67,15 @@ To quit: **right-click double-click** anywhere on the bar.
 | `PermissionDenied` | Clear attention flag |
 | `SubagentStart` / `SubagentStop` | Track background agent count (blue dot); if `agent_type` contains `codex`, record a pending rescue entry (keyed by `cwd`, expires in 10 s) so the next Codex `SessionStart` for that cwd auto-hides itself |
 
-5. Generates `src/codex_hook.ps1` and injects hooks into `%USERPROFILE%\.codex\hooks.json` + enables `codex_hooks = true` in `%USERPROFILE%\.codex\config.toml` for Codex CLI events:
+5. Injects hooks into `%USERPROFILE%\.codex\hooks.json` + enables `codex_hooks = true` in `%USERPROFILE%\.codex\config.toml` for Codex CLI events. Hooks call `python.exe hook.py --source=codex` directly — no PowerShell wrapper needed.
 
 | Event | Purpose |
 |---|---|
 | `SessionStart` | Register Codex session (CX card); auto-hidden if pre-marked as rescue agent via `SubagentStart` |
 | `UserPromptSubmit` | Mark running, record prompt |
 | `Stop` | Mark idle, return `{"continue": true}` |
-| `PreToolUse` / `PostToolUse` / `PermissionRequest` | Mirror Claude Code behavior |
+| `PreToolUse` / `PostToolUse` / `PostToolUseFailure` | Bash-only — track active Bash tool, upgrade idle→running |
+| `PermissionRequest` | Red dot — needs attention |
 
 > **Note:** `install.py` is idempotent — re-running it refreshes hook paths safely without duplicating entries.
 
@@ -125,8 +126,9 @@ git push origin feat/my-feature
 
 To restart after code changes:
 
-```powershell
-Get-Process pythonw -ErrorAction SilentlyContinue | Stop-Process -Force
+```bash
+# Git Bash
+powershell.exe -NoProfile -Command "Get-Process pythonw -EA SilentlyContinue | Stop-Process -Force"
 cscript.exe vibebar.vbs
 ```
 
@@ -139,6 +141,9 @@ cscript.exe vibebar.vbs
 - [x] **Blue dot while Codex runs** — parent CC session stays blue until the spawned Codex process actually fires Stop, using parent_sid tracking instead of cwd heuristic
 - [x] **Stale session cleanup** — primary sessions inactive for 4 h are automatically marked idle; zombie sessions no longer cause permanent blue dots
 - [x] **Empty state card** — a proper card-shaped placeholder with drag support when no sessions are present
+- [x] **Codex hook reliability** — direct `python.exe --source=codex` call replaces PowerShell wrapper; `readline()` fixes stdin blocking; PreToolUse/PostToolUse restricted to Bash-only to eliminate timeout storms
+- [x] **`/goal` purple dot** — PreToolUse Bash upgrades idle→running so sessions started via Codex `/goal` show the correct running color
+- [x] **Smooth card removal** — Win32 mask held at old size during shrink animation, eliminating the clip-before-move artifact when deleting a card
 
 ## Star History
 
