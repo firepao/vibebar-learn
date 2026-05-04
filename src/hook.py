@@ -234,6 +234,12 @@ def main() -> int:
             )
             if notif_type.strip() == "permission_prompt":
                 sess["needs_attention"] = True
+        elif event == "SessionEnd":
+            sessions.pop(sid, None)
+        elif event == "CwdChanged":
+            if cwd:
+                sess["cwd"] = cwd
+                sess["cwd_name"] = Path(cwd).name or cwd
         elif event == "Stop" or (event == "StopFailure" and sid != "unknown"):
             # Do NOT update cwd here: subagents fire Stop with parent's session_id
             # but their own (sub)directory, causing cwd drift.
