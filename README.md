@@ -61,11 +61,13 @@ To quit: **right-click double-click** anywhere on the bar.
 | `SessionStart` | Register session, detect primary vs subagent |
 | `UserPromptSubmit` | Mark session as running, record prompt |
 | `Stop` / `StopFailure` | Mark session as idle |
-| `PreToolUse` | Detect Bash tool activity (blue dot) |
-| `PostToolUse` / `PostToolUseFailure` | Clear Bash activity flag |
+| `SessionEnd` | Delete session immediately — card disappears as soon as Claude Code exits |
+| `CwdChanged` | Update card title in real-time when the working directory changes mid-session |
+| `PreToolUse` | Detect Bash tool activity (blue dot); guarded by `agent_id` so subagent tool calls don't pollute parent session state |
+| `PostToolUse` / `PostToolUseFailure` | Clear Bash activity flag; same `agent_id` guard |
 | `PermissionRequest` / `Notification` | Red dot — needs attention |
 | `PermissionDenied` | Clear attention flag |
-| `SubagentStart` / `SubagentStop` | Track background agent count (blue dot); if `agent_type` contains `codex`, record a pending rescue entry (keyed by `cwd`, expires in 10 s) so the next Codex `SessionStart` for that cwd auto-hides itself |
+| `SubagentStart` / `SubagentStop` | Track background agent count (blue dot); if `agent_type` contains `codex`, record a pending rescue entry (keyed by `cwd`, expires in 60 s) so the next Codex `SessionStart` for that cwd auto-hides itself |
 
 5. Injects hooks into `%USERPROFILE%\.codex\hooks.json` + enables `codex_hooks = true` in `%USERPROFILE%\.codex\config.toml` for Codex CLI events. Hooks call `python.exe hook.py --source=codex` directly — no PowerShell wrapper needed.
 
@@ -74,7 +76,8 @@ To quit: **right-click double-click** anywhere on the bar.
 | `SessionStart` | Register Codex session (CX card); auto-hidden if pre-marked as rescue agent via `SubagentStart` |
 | `UserPromptSubmit` | Mark running, record prompt |
 | `Stop` | Mark idle, return `{"continue": true}` |
-| `PreToolUse` / `PostToolUse` / `PostToolUseFailure` | Bash-only — track active Bash tool, upgrade idle→running |
+| `SessionEnd` | Delete session immediately when Codex process exits |
+| `PreToolUse` / `PostToolUse` / `PostToolUseFailure` | Bash-only — track active Bash tool, upgrade idle→running; guarded by `agent_id` to ignore subagent events |
 | `PermissionRequest` | Red dot — needs attention |
 
 > **Note:** `install.py` is idempotent — re-running it refreshes hook paths safely without duplicating entries.
@@ -144,6 +147,9 @@ cscript.exe vibebar.vbs
 - [x] **Codex hook reliability** — direct `python.exe --source=codex` call replaces PowerShell wrapper; `readline()` fixes stdin blocking; PreToolUse/PostToolUse restricted to Bash-only to eliminate timeout storms
 - [x] **`/goal` purple dot** — PreToolUse Bash upgrades idle→running so sessions started via Codex `/goal` show the correct running color
 - [x] **Smooth card removal** — Win32 mask held at old size during shrink animation, eliminating the clip-before-move artifact when deleting a card
+- [x] **Subagent hook isolation** — `agent_id` guard on `PreToolUse`/`PostToolUse`/`PostToolUseFailure` prevents background subagent tool events from polluting parent session state, fixing the blue→purple regression
+- [x] **Instant card cleanup on exit** — `SessionEnd` hook deletes the session immediately when Claude Code or Codex exits, instead of leaving an idle card for up to 4 hours
+- [x] **Live directory tracking** — `CwdChanged` hook keeps the card title accurate when the user navigates to a different directory mid-session
 
 ## Star History
 

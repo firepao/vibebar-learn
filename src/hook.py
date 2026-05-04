@@ -165,6 +165,8 @@ def main() -> int:
         state = load_state()
         cleanup_stale_sessions(state)
         sessions = state.setdefault("sessions", {})
+        if event == "CwdChanged" and not cwd:
+            return 0
         sess = sessions.setdefault(sid, {})
         sess["last_update"] = _now_iso()
         sess["source"] = source_name

@@ -61,11 +61,13 @@ cscript.exe vibebar.vbs
 | `SessionStart`                         | 注册会话，判断主会话 vs 子代理                                                                                                                                         |
 | `UserPromptSubmit`                     | 标记运行中，记录提示词                                                                                                                                                 |
 | `Stop` / `StopFailure`               | 标记空闲                                                                                                                                                               |
-| `PreToolUse`                           | 检测 Bash 工具活动（蓝点）                                                                                                                                             |
-| `PostToolUse` / `PostToolUseFailure` | 清除 Bash 活动标记                                                                                                                                                     |
+| `SessionEnd`                           | 立即删除会话，Claude Code 退出时卡片即刻消失                                                                                                                           |
+| `CwdChanged`                           | 实时更新卡片标题，准确反映当前工作目录                                                                                                                                 |
+| `PreToolUse`                           | 检测 Bash 工具活动（蓝点）；通过 `agent_id` 过滤子代理事件，防止污染父会话状态                                                                                        |
+| `PostToolUse` / `PostToolUseFailure` | 清除 Bash 活动标记；同样通过 `agent_id` 过滤子代理事件                                                                                                                |
 | `PermissionRequest` / `Notification` | 红点，需要关注                                                                                                                                                         |
 | `PermissionDenied`                     | 清除关注标记                                                                                                                                                           |
-| `SubagentStart` / `SubagentStop`     | 追踪后台代理数量（蓝点）；若 `agent_type` 含 `codex`，按 `cwd` 写入一条 pending 记录（10 秒内有效），下一个相同 cwd 的 Codex `SessionStart` 消费后自动标为隐藏 |
+| `SubagentStart` / `SubagentStop`     | 追踪后台代理数量（蓝点）；若 `agent_type` 含 `codex`，按 `cwd` 写入一条 pending 记录（60 秒内有效），下一个相同 cwd 的 Codex `SessionStart` 消费后自动标为隐藏 |
 
 5. 注入 `%USERPROFILE%\.codex\hooks.json`，并在 `%USERPROFILE%\.codex\config.toml` 中启用 `codex_hooks = true`。Hook 直接调用 `python.exe hook.py --source=codex`，无需 PowerShell 包装层。
 
@@ -74,7 +76,8 @@ cscript.exe vibebar.vbs
 | `SessionStart` | 注册 Codex 会话（CX 卡片）；若被 `SubagentStart` 预标记为 rescue agent 则自动隐藏 |
 | `UserPromptSubmit` | 标记运行中，记录提示词 |
 | `Stop` | 标记空闲，返回 `{"continue": true}` |
-| `PreToolUse` / `PostToolUse` / `PostToolUseFailure` | 仅 Bash 工具触发 — 追踪活跃 Bash、空闲升为运行中 |
+| `SessionEnd` | Codex 进程退出时立即删除会话 |
+| `PreToolUse` / `PostToolUse` / `PostToolUseFailure` | 仅 Bash 工具触发 — 追踪活跃 Bash、空闲升为运行中；通过 `agent_id` 过滤子代理事件 |
 | `PermissionRequest` | 红点，需要关注 |
 
 > `install.py` 幂等，重复运行安全，不会重复添加 hook 条目。
