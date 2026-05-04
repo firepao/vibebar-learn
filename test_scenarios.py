@@ -359,7 +359,7 @@ check("SubagentStop 不降到负数: count=0", get_sess(SID).get("active_subagen
 
 # 超 TTL 的孤儿条目（SubagentStop 未触发）在 UPS 时被清理
 st = load_state()
-st["sessions"][SID]["active_subagent_ids"] = [{"id": "", "ts": old_iso(400)}]
+st["sessions"][SID]["active_subagent_ids"] = [{"id": "", "ts": old_iso(700)}]
 st["sessions"][SID]["active_subagent_count"] = 1
 save_state(st)
 hook({"session_id": SID, "hook_event_name": "UserPromptSubmit",

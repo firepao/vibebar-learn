@@ -21,7 +21,7 @@ STALE_RUNNING_THRESHOLD_SEC = 600   # 10 min — non-primary sessions that stop 
 STALE_PRIMARY_RUNNING_SEC   = 4 * 3600  # 4 h — primary sessions with no hook activity
 STALE_IDLE_PURGE_SEC = 86400        # 24 h — remove very old idle sessions
 RESCUE_PENDING_TTL = 60             # seconds — SubagentStart → Codex SessionStart window
-ORPHAN_SUBAGENT_TTL = 300           # seconds — background subagents without SubagentStop
+ORPHAN_SUBAGENT_TTL = STALE_RUNNING_THRESHOLD_SEC  # align with non-primary stale threshold
 
 
 def _now_iso() -> str:
