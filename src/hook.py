@@ -9,7 +9,7 @@ import json
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 STATE_PATH = Path(os.environ["LOCALAPPDATA"]) / "VibeBar" / "state.json"
@@ -21,6 +21,7 @@ STALE_RUNNING_THRESHOLD_SEC = 600   # 10 min — non-primary sessions that stop 
 STALE_PRIMARY_RUNNING_SEC   = 4 * 3600  # 4 h — primary sessions with no hook activity
 STALE_IDLE_PURGE_SEC = 86400        # 24 h — remove very old idle sessions
 RESCUE_PENDING_TTL = 60             # seconds — SubagentStart → Codex SessionStart window
+ORPHAN_SUBAGENT_TTL = 300           # seconds — background subagents without SubagentStop
 
 
 def _now_iso() -> str:
@@ -179,10 +180,17 @@ def main() -> int:
             sess.setdefault("status", "idle")
             source = str(payload.get("source", "")).strip()
             if source_name == "codex" or source != "resume":
+                sess["active_subagent_ids"] = []
                 sess["active_subagent_count"] = 0
                 sess["active_bash"] = False
             else:
-                sess.setdefault("active_subagent_count", 0)
+                # resume: migrate old format (count>0 but no ids list → conservative reset)
+                if not sess.get("active_subagent_ids") and sess.get("active_subagent_count", 0) > 0:
+                    sess["active_subagent_ids"] = []
+                    sess["active_subagent_count"] = 0
+                else:
+                    sess.setdefault("active_subagent_ids", [])
+                    sess.setdefault("active_subagent_count", 0)
                 sess.setdefault("active_bash", False)
             if payload.get("model"):
                 sess["model"] = payload.get("model")
@@ -212,7 +220,10 @@ def main() -> int:
             sess.pop("user_closed", None)
             sess["needs_attention"] = False
             sess["status"] = "running"
-            sess["active_subagent_count"] = 0  # reset orphaned counts at turn start
+            cutoff = (datetime.now() - timedelta(seconds=ORPHAN_SUBAGENT_TTL)).isoformat(timespec="seconds")
+            active = [a for a in sess.get("active_subagent_ids", []) if a.get("ts", "") > cutoff]
+            sess["active_subagent_ids"] = active
+            sess["active_subagent_count"] = len(active)
             prompt = str(payload.get("prompt", "") or "")
             sess["last_prompt"] = prompt[:80]
             sess["prompt_at"] = _now_iso()
@@ -252,14 +263,33 @@ def main() -> int:
             # Resetting here caused a brief green flash before SubagentStart could fire.
             sess["needs_attention"] = False
         elif event == "SubagentStart" and source_name != "codex":
-            sess["active_subagent_count"] = max(0, sess.get("active_subagent_count", 0)) + 1
+            agent_id = payload.get("agent_id", "")
+            active = sess.setdefault("active_subagent_ids", [])
+            if agent_id:
+                if not any(a.get("id") == agent_id for a in active):
+                    active.append({"id": agent_id, "ts": _now_iso()})
+            else:
+                active.append({"id": "", "ts": _now_iso()})
+            sess["active_subagent_count"] = len(active)
             # Pre-announce rescue: record pending entry so Codex SessionStart can self-identify
             agent_type = str(payload.get("agent_type", ""))
             if "codex" in agent_type.lower() and cwd:
                 pending = state.setdefault("_pending_rescues", [])
                 pending.append({"ts": _now_iso(), "cwd": cwd, "parent_sid": sid})
         elif event == "SubagentStop" and source_name != "codex":
-            sess["active_subagent_count"] = max(0, sess.get("active_subagent_count", 0) - 1)
+            agent_id = payload.get("agent_id", "")
+            active = sess.get("active_subagent_ids", [])
+            if agent_id:
+                active = [a for a in active if a.get("id") != agent_id]
+            elif active:
+                for i in range(len(active) - 1, -1, -1):
+                    if not active[i].get("id"):
+                        active = active[:i] + active[i + 1:]
+                        break
+                else:
+                    active = active[:-1]
+            sess["active_subagent_ids"] = active
+            sess["active_subagent_count"] = len(active)
         elif event == "PreToolUse" and payload.get("tool_name") == "Bash" and not payload.get("agent_id"):
             if not sess.get("active_bash"):
                 sess["active_bash"] = True
