@@ -25,7 +25,7 @@ REPO_DIR = Path(__file__).parent.resolve()
 SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
 CODEX_HOOKS_PATH = Path.home() / ".codex" / "hooks.json"
 CODEX_CONFIG_PATH = Path.home() / ".codex" / "config.toml"
-STATE_DIR = Path(os.environ["LOCALAPPDATA"]) / "VibeBar"
+STATE_DIR = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "VibeBar"
 PYTHON_PATH_FILE = REPO_DIR / ".python-path"
 HOOK_SCRIPT = REPO_DIR / "src" / "hook.py"
 HOOK_SCRIPT_POSIX = str(HOOK_SCRIPT).replace("\\", "/")
@@ -58,6 +58,11 @@ CODEX_HOOK_EVENTS = {
     "PostToolUseFailure": {"matcher": "Bash"},
     "PermissionRequest": {"matcher": ".*"},
 }
+
+
+def _q(p: str) -> str:
+    """Quote a path only when it contains spaces (cmd.exe safe)."""
+    return f'"{p}"' if " " in p else p
 
 
 def find_pythonw() -> str:
@@ -121,8 +126,12 @@ def inject_hooks(python_path: str) -> None:
 def inject_codex_hooks(python_path: str) -> None:
     data = _load_hooks_json(CODEX_HOOKS_PATH)
 
-    python_exe = str(Path(python_path).parent / "python.exe").replace("\\", "/")
-    hook_cmd = f'"{python_exe}" "{HOOK_SCRIPT_POSIX}" --source=codex'
+    # cmd.exe /C strips outer quotes when the command starts with a quote, so we
+    # use backslash paths without surrounding quotes. Quote only paths with spaces.
+    python_exe = str(Path(python_path).parent / "python.exe")
+    hook_script = str(HOOK_SCRIPT)
+
+    hook_cmd = f"{_q(python_exe)} {_q(hook_script)} --source=codex"
 
     hooks_root = data.setdefault("hooks", {})
     _inject_events(hooks_root, CODEX_HOOK_EVENTS, hook_cmd, timeout=5)

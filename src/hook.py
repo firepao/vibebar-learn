@@ -12,7 +12,7 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-STATE_PATH = Path(os.environ["LOCALAPPDATA"]) / "VibeBar" / "state.json"
+STATE_PATH = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "VibeBar" / "state.json"
 LOCK_PATH = STATE_PATH.with_suffix(".lock")
 DEBUG_LOG = STATE_PATH.parent / "hook-debug.log"
 LOCK_ACQUIRE_TIMEOUT_SEC = 0.3
