@@ -100,7 +100,7 @@ Window {
         layer.effect: MultiEffect {
             maskEnabled: true
             maskThresholdMin: 0.5
-            maskSpreadAtMin: 0.0
+            maskSpreadAtMin: 1.0
             maskSource: ShaderEffectSource {
                 width: island.width
                 height: island.height
