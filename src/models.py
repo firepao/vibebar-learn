@@ -287,7 +287,13 @@ class IslandBridge(QObject):
         from win32 import find_vscode_hwnd_for_cwd, foreground_window, ensure_on_current_desktop
         state = read_state()
         cwd = state.get("sessions", {}).get(sid, {}).get("cwd", "") or ""
-        hwnd = find_vscode_hwnd_for_cwd(cwd)
+        hwnd = 0
+        p = Path(cwd)
+        while str(p) != p.anchor and p.name:
+            hwnd = find_vscode_hwnd_for_cwd(str(p))
+            if hwnd:
+                break
+            p = p.parent
         if not hwnd:
             return
         own = self._own_hwnd

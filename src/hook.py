@@ -252,7 +252,6 @@ def main() -> int:
         elif event == "CwdChanged":
             if cwd:
                 sess["cwd"] = cwd
-                sess["cwd_name"] = Path(cwd).name or cwd
         elif event == "Stop" or (event == "StopFailure" and sid != "unknown"):
             # Do NOT update cwd here: subagents fire Stop with parent's session_id
             # but their own (sub)directory, causing cwd drift.
