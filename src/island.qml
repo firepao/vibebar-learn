@@ -121,7 +121,7 @@ Window {
             }
         }
         Timer { id: leaveTimer;  interval: 250; onTriggered: island.expanded = false }
-        Timer { id: expandTimer; interval: 150; onTriggered: island.expanded = true  }
+        Timer { id: expandTimer; interval: 0;   onTriggered: island.expanded = true  }
 
         DragHandler {
             id: islandDragH
