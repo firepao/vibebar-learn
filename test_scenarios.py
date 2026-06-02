@@ -1036,32 +1036,37 @@ payload_fn = getattr(ui_qml, "_finish_event_payload", None)
 check("_finish_event_payload exists", callable(payload_fn))
 
 if callable(payload_fn):
-    should_emit, reason, text = payload_fn("", "2026-06-02T10:00:00", "completed")
+    should_emit, reason, text = payload_fn(False, "", "2026-06-02T10:00:00", "completed")
     check("initial historical finish does not notify", should_emit is False)
     check("initial historical finish normalizes completed",
           reason == "completed" and text == "Task complete", (reason, text))
 
-    should_emit, reason, text = payload_fn("2026-06-02T09:59:00", "2026-06-02T10:00:00", "completed")
+    should_emit, reason, text = payload_fn(True, "", "2026-06-02T10:00:00", "completed")
+    check("observed running session finish notifies",
+          should_emit is True and reason == "completed" and text == "Task complete",
+          (should_emit, reason, text))
+
+    should_emit, reason, text = payload_fn(True, "2026-06-02T09:59:00", "2026-06-02T10:00:00", "completed")
     check("new completed finish notifies",
           should_emit is True and reason == "completed" and text == "Task complete",
           (should_emit, reason, text))
 
-    should_emit, reason, text = payload_fn("2026-06-02T09:59:00", "2026-06-02T10:00:00", "interrupted")
+    should_emit, reason, text = payload_fn(True, "2026-06-02T09:59:00", "2026-06-02T10:00:00", "interrupted")
     check("new interrupted finish notifies",
           should_emit is True and reason == "interrupted" and text == "Task interrupted",
           (should_emit, reason, text))
 
-    should_emit, reason, text = payload_fn("2026-06-02T09:59:00", "2026-06-02T10:00:00", "stale")
+    should_emit, reason, text = payload_fn(True, "2026-06-02T09:59:00", "2026-06-02T10:00:00", "stale")
     check("new stale finish uses interrupted text",
           should_emit is True and reason == "stale" and text == "Task interrupted",
           (should_emit, reason, text))
 
-    should_emit, reason, text = payload_fn("2026-06-02T09:59:00", "2026-06-02T10:00:00", "")
+    should_emit, reason, text = payload_fn(True, "2026-06-02T09:59:00", "2026-06-02T10:00:00", "")
     check("missing reason defaults to completed",
           should_emit is True and reason == "completed" and text == "Task complete",
           (should_emit, reason, text))
 
-    should_emit, reason, text = payload_fn("2026-06-02T10:00:00", "2026-06-02T10:00:00", "completed")
+    should_emit, reason, text = payload_fn(True, "2026-06-02T10:00:00", "2026-06-02T10:00:00", "completed")
     check("same finished_at does not notify", should_emit is False)
 else:
     check("completed text mapping", False, "_finish_event_payload missing")

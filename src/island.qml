@@ -49,7 +49,8 @@ Window {
                 island.notifySid = sid
                 island.notifyReason = reason
                 island.notifyText = text
-                island.expanded = true
+                if (!islandDragH.active)
+                    island.expanded = true
                 finishNoticeTimer.restart()
             }
         }
