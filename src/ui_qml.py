@@ -36,6 +36,20 @@ def _get_ui_scale() -> float:
         return 1.0
 
 
+FINISH_NOTIFICATION_TEXT = {
+    "completed": "Task complete",
+    "interrupted": "Task interrupted",
+    "stale": "Task interrupted",
+}
+
+
+def _finish_event_payload(last_seen: str, finished_at: str, reason: str | None) -> tuple[bool, str, str]:
+    normalized = str(reason or "").strip() or "completed"
+    text = FINISH_NOTIFICATION_TEXT.get(normalized, FINISH_NOTIFICATION_TEXT["completed"])
+    should_emit = bool(finished_at and last_seen and finished_at != last_seen)
+    return should_emit, normalized, text
+
+
 class VibeBarApp:
     def __init__(self):
         self.qt = QApplication(sys.argv)
@@ -203,10 +217,14 @@ class VibeBarApp:
         for sid, sess in sessions.items():
             finished_at = sess.get("finished_at") or ""
             last_seen = self._last_finished_at.get(sid, "")
+            should_notify, reason, text = _finish_event_payload(
+                last_seen, finished_at, sess.get("finish_reason")
+            )
             if finished_at and finished_at != last_seen:
                 self._last_finished_at[sid] = finished_at
-                if last_seen:
+                if should_notify:
                     self._flash_done(sid)
+                    self.bridge.sessionFinished.emit(sid, reason, text)
 
         for sid in list(self._last_finished_at):
             if sid not in sessions:

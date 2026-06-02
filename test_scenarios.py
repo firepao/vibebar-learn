@@ -20,6 +20,7 @@ from models import (
     RUNNING_COLOR, BACKGROUND_COLOR, IDLE_COLOR, DOT_EMPTY_COLOR, ATTENTION_COLOR,
     STATUS_RUNNING, STATUS_IDLE,
 )
+import ui_qml
 
 # ── 颜色名映射 ───────────────────────────────────────────────────────────────
 COLOR_NAME = {
@@ -1027,6 +1028,47 @@ check("SubagentStop 后: GREEN (agent 已结束)", cname(s) == "GREEN")
 cleanup(SID)
 
 # ════════════════════════════════════════════════════════════════════════════
+# 16. Finish notification payload
+# ════════════════════════════════════════════════════════════════════════════
+section("16. Finish notification payload")
+
+payload_fn = getattr(ui_qml, "_finish_event_payload", None)
+check("_finish_event_payload exists", callable(payload_fn))
+
+if callable(payload_fn):
+    should_emit, reason, text = payload_fn("", "2026-06-02T10:00:00", "completed")
+    check("initial historical finish does not notify", should_emit is False)
+    check("initial historical finish normalizes completed",
+          reason == "completed" and text == "Task complete", (reason, text))
+
+    should_emit, reason, text = payload_fn("2026-06-02T09:59:00", "2026-06-02T10:00:00", "completed")
+    check("new completed finish notifies",
+          should_emit is True and reason == "completed" and text == "Task complete",
+          (should_emit, reason, text))
+
+    should_emit, reason, text = payload_fn("2026-06-02T09:59:00", "2026-06-02T10:00:00", "interrupted")
+    check("new interrupted finish notifies",
+          should_emit is True and reason == "interrupted" and text == "Task interrupted",
+          (should_emit, reason, text))
+
+    should_emit, reason, text = payload_fn("2026-06-02T09:59:00", "2026-06-02T10:00:00", "stale")
+    check("new stale finish uses interrupted text",
+          should_emit is True and reason == "stale" and text == "Task interrupted",
+          (should_emit, reason, text))
+
+    should_emit, reason, text = payload_fn("2026-06-02T09:59:00", "2026-06-02T10:00:00", "")
+    check("missing reason defaults to completed",
+          should_emit is True and reason == "completed" and text == "Task complete",
+          (should_emit, reason, text))
+
+    should_emit, reason, text = payload_fn("2026-06-02T10:00:00", "2026-06-02T10:00:00", "completed")
+    check("same finished_at does not notify", should_emit is False)
+else:
+    check("completed text mapping", False, "_finish_event_payload missing")
+    check("interrupted text mapping", False, "_finish_event_payload missing")
+    check("stale text mapping", False, "_finish_event_payload missing")
+    check("same finished_at suppression", False, "_finish_event_payload missing")
+
 # 结果汇总
 # ════════════════════════════════════════════════════════════════════════════
 print(f"\n{'═'*60}")

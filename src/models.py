@@ -250,6 +250,7 @@ class SessionsModel(QAbstractListModel):
 
 class IslandBridge(QObject):
     collapseRequested = pyqtSignal()
+    sessionFinished = pyqtSignal(str, str, str)
 
     def __init__(self, model: SessionsModel, cmd_queue: queue.Queue, parent=None):
         super().__init__(parent)
