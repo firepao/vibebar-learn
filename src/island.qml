@@ -34,6 +34,7 @@ Window {
         property string notifySid: ""
         property string notifyText: ""
         property string notifyReason: "completed"
+        property bool notifyIsError: notifyReason === "interrupted" || notifyReason === "stale"
         property bool notifyVisible: notifyText.length > 0
 
         Component.onCompleted: displayCount = sessionsModel.sessionCount
@@ -502,9 +503,9 @@ Window {
                                 finishNoticeText.implicitWidth + Math.round(28 * island.sf))
                 height: Math.round(28 * island.sf)
                 radius: height / 2
-                color: island.notifyReason === "completed" ? "#0e2a1c" : "#2a0e0e"
+                color: island.notifyIsError ? "#2a0e0e" : "#0e2a1c"
                 border.width: 1
-                border.color: island.notifyReason === "completed" ? "#2f8f5b" : "#9f3d3d"
+                border.color: island.notifyIsError ? "#9f3d3d" : "#2f8f5b"
                 enabled: false
 
                 Behavior on opacity { NumberAnimation { duration: 140 } }
@@ -512,8 +513,10 @@ Window {
                 Text {
                     id: finishNoticeText
                     anchors.centerIn: parent
+                    width: parent.width - Math.round(16 * island.sf)
                     text: island.notifyText
-                    color: island.notifyReason === "completed" ? "#9ff0bf" : "#ffb3b3"
+                    color: island.notifyIsError ? "#ffb3b3" : "#9ff0bf"
+                    horizontalAlignment: Text.AlignHCenter
                     font {
                         family: "Microsoft YaHei UI"
                         pixelSize: Math.round(11 * island.sf)
