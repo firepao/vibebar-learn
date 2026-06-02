@@ -106,6 +106,7 @@ check("UserPromptSubmit: last_prompt 保存", s.get("last_prompt") == "do someth
 check("UserPromptSubmit: active_subagent_count 清零", s.get("active_subagent_count") == 0)
 check("UserPromptSubmit: needs_attention=False", s.get("needs_attention") == False)
 check("UserPromptSubmit: user_closed 清除", "user_closed" not in s)
+check("UserPromptSubmit: finish_reason cleared", "finish_reason" not in s)
 
 hook({"session_id": SID, "hook_event_name": "Stop", "cwd": "C:/dev/P"})
 s = get_sess(SID)
@@ -113,12 +114,14 @@ check("Stop: status=idle", s.get("status") == "idle")
 check("Stop: active_bash=False", s.get("active_bash") == False)
 check("Stop: needs_attention=False", s.get("needs_attention") == False)
 check("Stop: finished_at 有值", bool(s.get("finished_at")))
+check("Stop: finish_reason=completed", s.get("finish_reason") == "completed", s.get("finish_reason"))
 
 # StopFailure 等同 Stop
 hook({"session_id": SID, "hook_event_name": "UserPromptSubmit", "cwd": "C:/dev/P", "prompt": "x"})
 hook({"session_id": SID, "hook_event_name": "StopFailure", "cwd": "C:/dev/P"})
 s = get_sess(SID)
 check("StopFailure: status=idle", s.get("status") == "idle")
+check("StopFailure: finish_reason=interrupted", s.get("finish_reason") == "interrupted", s.get("finish_reason"))
 
 # SessionStart 无 model 无 resume → is_primary=False
 SID2 = "t-noprimary"
@@ -629,6 +632,8 @@ hook({"session_id": "trigger-cleanup", "hook_event_name": "SessionStart",
       "cwd": "C:/dev/P2", "model": "m"})
 s = get_sess(SID)
 check("非primary running >10min → idle", s.get("status") == "idle")
+check("nonprimary running >10min -> finish_reason=stale",
+      s.get("finish_reason") == "stale", s.get("finish_reason"))
 
 # primary running > 4h → 强制 idle
 SID2 = "t-stale2"
@@ -643,6 +648,8 @@ hook({"session_id": "trigger-cleanup", "hook_event_name": "SessionStart",
       "cwd": "C:/dev/P2", "model": "m"})
 s = get_sess(SID2)
 check("primary running >4h → idle", s.get("status") == "idle")
+check("primary running >4h -> finish_reason=stale",
+      s.get("finish_reason") == "stale", s.get("finish_reason"))
 
 # idle > 24h → 删除
 SID3 = "t-stale3"

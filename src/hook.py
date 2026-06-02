@@ -61,6 +61,7 @@ def cleanup_stale_sessions(state: dict) -> None:
         stale_thresh = STALE_RUNNING_THRESHOLD_SEC if sess.get("is_primary") is False else STALE_PRIMARY_RUNNING_SEC
         if sess.get("status") == "running" and age > stale_thresh:
             sess["status"] = "idle"
+            sess["finish_reason"] = "stale"
             sess.pop("needs_attention", None)
             if not sess.get("finished_at"):
                 sess["finished_at"] = sess.get("last_update")
@@ -228,6 +229,7 @@ def main() -> int:
             sess["last_prompt"] = prompt[:80]
             sess["prompt_at"] = _now_iso()
             sess["finished_at"] = None
+            sess.pop("finish_reason", None)
             _p = prompt.lstrip()
             if source_name == "codex" and (_p.startswith("--wait") or _p.startswith("<task>")):
                 sess["is_rescue_agent"] = True
@@ -258,6 +260,7 @@ def main() -> int:
             # but their own (sub)directory, causing cwd drift.
             sess["status"] = "idle"
             sess["finished_at"] = _now_iso()
+            sess["finish_reason"] = "interrupted" if event == "StopFailure" else "completed"
             sess["active_bash"] = False
             # Do NOT reset active_subagent_count here — SubagentStart/SubagentStop own it.
             # Resetting here caused a brief green flash before SubagentStart could fire.
