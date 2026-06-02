@@ -31,12 +31,26 @@ Window {
         property int  displayCount: 0
         property int  visibleRows: Math.max(1, Math.min(displayCount, 10))
         property int  expandedH: bodyPadding * 2 + visibleRows * slotH
+        property string notifySid: ""
+        property string notifyText: ""
+        property string notifyReason: "completed"
+        property bool notifyVisible: notifyText.length > 0
 
         Component.onCompleted: displayCount = sessionsModel.sessionCount
 
         Connections {
             target: bridge
             function onCollapseRequested() { expandTimer.stop(); island.expanded = false }
+            function onSessionFinished(sid, reason, text) {
+                finishNoticeTimer.stop()
+                leaveTimer.stop()
+                expandTimer.stop()
+                island.notifySid = sid
+                island.notifyReason = reason
+                island.notifyText = text
+                island.expanded = true
+                finishNoticeTimer.restart()
+            }
         }
 
         Connections {
@@ -122,6 +136,15 @@ Window {
         }
         Timer { id: leaveTimer;  interval: 250; onTriggered: island.expanded = false }
         Timer { id: expandTimer; interval: 0;   onTriggered: island.expanded = true  }
+        Timer {
+            id: finishNoticeTimer
+            interval: 2500
+            onTriggered: {
+                island.notifyText = ""
+                if (!hoverHandler.hovered && !islandDragH.active && !cardsList.cardHorzDragging && !emptyStateDragH.active)
+                    island.expanded = false
+            }
+        }
 
         DragHandler {
             id: islandDragH
@@ -462,6 +485,42 @@ Window {
                             onDoubleTapped: bridge.jump(sid)
                         }
                     }
+                }
+            }
+
+            Rectangle {
+                id: finishNotice
+                z: 10
+                visible: island.notifyVisible && island.expanded
+                opacity: visible ? 1.0 : 0.0
+                anchors {
+                    horizontalCenter: parent.horizontalCenter
+                    top: parent.top
+                    topMargin: Math.round(6 * island.sf)
+                }
+                width: Math.min(parent.width - Math.round(24 * island.sf),
+                                finishNoticeText.implicitWidth + Math.round(28 * island.sf))
+                height: Math.round(28 * island.sf)
+                radius: height / 2
+                color: island.notifyReason === "completed" ? "#0e2a1c" : "#2a0e0e"
+                border.width: 1
+                border.color: island.notifyReason === "completed" ? "#2f8f5b" : "#9f3d3d"
+                enabled: false
+
+                Behavior on opacity { NumberAnimation { duration: 140 } }
+
+                Text {
+                    id: finishNoticeText
+                    anchors.centerIn: parent
+                    text: island.notifyText
+                    color: island.notifyReason === "completed" ? "#9ff0bf" : "#ffb3b3"
+                    font {
+                        family: "Microsoft YaHei UI"
+                        pixelSize: Math.round(11 * island.sf)
+                        bold: true
+                    }
+                    elide: Text.ElideRight
+                    maximumLineCount: 1
                 }
             }
         }
