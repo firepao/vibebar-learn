@@ -50,6 +50,24 @@ def _finish_event_payload(has_seen: bool, last_seen: str, finished_at: str, reas
     return should_emit, normalized, text
 
 
+def _finish_notice_payload(
+    has_seen: bool,
+    last_seen: str,
+    finished_at: str,
+    sess: dict,
+) -> tuple[bool, str, str, str, str, str]:
+    should_emit, reason, title = _finish_event_payload(
+        has_seen, last_seen, finished_at, sess.get("finish_reason")
+    )
+    cwd_name = str(sess.get("cwd_name") or "").strip()
+    if not cwd_name:
+        cwd = str(sess.get("cwd") or "").strip()
+        cwd_name = Path(cwd).name or cwd
+    prompt = str(sess.get("last_prompt") or "").strip()
+    source = str(sess.get("source") or "claude").strip() or "claude"
+    return should_emit, reason, title, cwd_name, prompt, source
+
+
 class VibeBarApp:
     def __init__(self):
         self.qt = QApplication(sys.argv)
@@ -219,14 +237,16 @@ class VibeBarApp:
             finished_at = sess.get("finished_at") or ""
             last_seen = self._last_finished_at.get(sid, "")
             has_seen = sid in self._seen_finished_sids
-            should_notify, reason, text = _finish_event_payload(
-                has_seen, last_seen, finished_at, sess.get("finish_reason")
+            should_notify, reason, title, cwd_name, prompt, source = _finish_notice_payload(
+                has_seen, last_seen, finished_at, sess
             )
             if finished_at != last_seen:
                 self._last_finished_at[sid] = finished_at
                 if should_notify:
                     self._flash_done(sid)
-                    self.bridge.sessionFinished.emit(sid, reason, text)
+                    self.bridge.sessionFinished.emit(
+                        sid, reason, title, cwd_name, prompt, source
+                    )
             self._seen_finished_sids.add(sid)
 
         for sid in list(self._last_finished_at):

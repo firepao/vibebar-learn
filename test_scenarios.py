@@ -1068,11 +1068,54 @@ if callable(payload_fn):
 
     should_emit, reason, text = payload_fn(True, "2026-06-02T10:00:00", "2026-06-02T10:00:00", "completed")
     check("same finished_at does not notify", should_emit is False)
+
+    notice_fn = getattr(ui_qml, "_finish_notice_payload", None)
+    check("_finish_notice_payload exists", callable(notice_fn))
+
+    if callable(notice_fn):
+        sess = {
+            "finish_reason": "completed",
+            "cwd_name": "vibe-bar",
+            "cwd": "E:/vibebar/vibe-bar",
+            "last_prompt": "implement finish popup",
+            "source": "claude",
+        }
+        should_emit, reason, title, cwd_name, prompt, source = notice_fn(
+            True, "", "2026-06-02T10:00:00", sess
+        )
+        check("finish notice payload emits for seen completed session",
+              should_emit is True and reason == "completed" and title == "Task complete",
+              (should_emit, reason, title))
+        check("finish notice payload includes cwd_name",
+              cwd_name == "vibe-bar", cwd_name)
+        check("finish notice payload includes prompt",
+              prompt == "implement finish popup", prompt)
+        check("finish notice payload includes source",
+              source == "claude", source)
+
+        sess = {
+            "finish_reason": "interrupted",
+            "cwd": "E:/vibebar/fallback-name",
+            "last_prompt": "",
+            "source": "codex",
+        }
+        should_emit, reason, title, cwd_name, prompt, source = notice_fn(
+            True, "2026-06-02T09:59:00", "2026-06-02T10:00:00", sess
+        )
+        check("finish notice payload maps interrupted",
+              should_emit is True and reason == "interrupted" and title == "Task interrupted",
+              (should_emit, reason, title))
+        check("finish notice payload falls back to cwd basename",
+              cwd_name == "fallback-name", cwd_name)
+        check("finish notice payload preserves codex source",
+              source == "codex", source)
 else:
     check("completed text mapping", False, "_finish_event_payload missing")
     check("interrupted text mapping", False, "_finish_event_payload missing")
     check("stale text mapping", False, "_finish_event_payload missing")
     check("same finished_at suppression", False, "_finish_event_payload missing")
+    check("_finish_notice_payload exists", False, "_finish_event_payload missing")
+    check("finish notice payload includes context", False, "_finish_event_payload missing")
 
 # 结果汇总
 # ════════════════════════════════════════════════════════════════════════════
