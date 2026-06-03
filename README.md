@@ -2,6 +2,12 @@
 
 English | [中文](README.zh.md)
 
+> This repository is a personal learning fork of
+> [WWeellkkiinn/vibe-bar](https://github.com/WWeellkkiinn/vibe-bar).
+> The upstream project remains the original source; this fork is maintained
+> under [firepao/vibebar-learn](https://github.com/firepao/vibebar-learn)
+> for experiments, learning, and local workflow improvements.
+
 A Dynamic Island–style floating bar for Windows that shows all your Claude Code and Codex CLI sessions at a glance.
 
 Hover to expand — see which projects are running, what was last asked, and how long ago. Double-click a card to jump to that VS Code window. Drag cards to reorder. Slide left or right to reposition the bar — drag it to a screen edge and it snaps back to center.
@@ -15,6 +21,7 @@ Hover to expand — see which projects are running, what was last asked, and how
 - **Live session dots** — purple pulse (running), green (idle), red (needs attention), blue (background task active)
 - **Hover to expand** — per-session cards with project name, last prompt, elapsed time
 - **CC / CX badges** — cards labeled CC (Claude Code, orange) or CX (Codex CLI, blue) so you always know which tool owns a session
+- **Finish popup surface** — task completion or interruption opens a compact island popup for 3 seconds; hovering keeps it open, and rapid finish events are queued instead of overwriting each other
 - **Jump to window** — double-click a card to bring VS Code into focus
 - **Drag to reorder** — arrange sessions by priority
 - **Slide to reposition** — drag the bar left or right to move it anywhere on screen; drag to either edge and it springs back to center, position persists across restarts
@@ -32,7 +39,7 @@ Hover to expand — see which projects are running, what was last asked, and how
 
 ```powershell
 # 1. Clone
-git clone https://github.com/WWeellkkiinn/vibe-bar.git
+git clone https://github.com/firepao/vibebar-learn.git
 cd vibe-bar
 
 # 2. Install dependency
@@ -119,7 +126,11 @@ vibe-bar/
 
 ## Development
 
-This repo is the active development base. Branch workflow:
+This repo is the active development base for the `firepao/vibebar-learn`
+fork. Keep `upstream` pointed at the original project and push local feature
+work to `origin`.
+
+Branch workflow:
 
 ```powershell
 git checkout -b feat/my-feature
@@ -138,6 +149,7 @@ cscript.exe vibebar.vbs
 ## Roadmap
 
 - [x] **Codex CLI support** — CC/CX badges, separate cards per tool, shared `state.json`
+- [x] **Task finish popup** — completion/interruption now opens a compact island popup for 3 seconds; hover defers collapse and rapid finish events are queued
 - [x] **Free positioning** — drag the bar left or right, snap back to center at screen edges, position persists across restarts
 - [x] **Card order memory** — drag to reorder cards; order persists across restarts (keyed by cwd)
 - [x] **Smooth collapse animation** — card content fades out in the second half of collapse and fades in on expand; bottom corners stay rounded throughout via MultiEffect layer clipping

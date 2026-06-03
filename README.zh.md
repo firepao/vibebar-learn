@@ -2,6 +2,12 @@
 
 [English](README.md) | 中文
 
+> 本仓库是基于
+> [WWeellkkiinn/vibe-bar](https://github.com/WWeellkkiinn/vibe-bar)
+> 的个人学习 fork。原项目仍是上游来源；本 fork 维护在
+> [firepao/vibebar-learn](https://github.com/firepao/vibebar-learn)，
+> 用于学习、实验和本地工作流改进。
+
 Windows 悬浮条，Dynamic Island 风格，实时展示所有 Claude Code 和 Codex CLI 会话状态。
 
 悬停展开 — 查看哪些项目在运行、最近问了什么、距今多久。双击卡片跳转到对应 VS Code 窗口，拖拽排序。左右滑动随意移动悬浮条位置，拖到屏幕边缘自动弹回中央。
@@ -15,6 +21,7 @@ Windows 悬浮条，Dynamic Island 风格，实时展示所有 Claude Code 和 C
 - **实时状态圆点** — 紫色脉冲（运行中）、绿色（空闲）、红色（需要关注）、蓝色（后台任务进行中）
 - **悬停展开** — 每个会话显示项目名、最近提示词、耗时
 - **CC / CX 标识** — 卡片标注 CC（Claude Code，橙色）或 CX（Codex CLI，蓝色），一眼区分来源
+- **任务完成弹窗** — Claude Code 或 Codex 任务完成/中断时，灵动岛会展开 3 秒的紧凑提示；鼠标悬停会延迟关闭，连续完成事件会排队显示
 - **跳转窗口** — 双击卡片将对应 VS Code 窗口置于前台
 - **拖拽排序** — 按优先级排列会话
 - **左右滑动定位** — 拖动悬浮条自由移动位置，滑到屏幕边缘自动弹回中央，位置跨重启保留
@@ -32,7 +39,7 @@ Windows 悬浮条，Dynamic Island 风格，实时展示所有 Claude Code 和 C
 
 ```powershell
 # 1. 克隆仓库
-git clone https://github.com/WWeellkkiinn/vibe-bar.git
+git clone https://github.com/firepao/vibebar-learn.git
 cd vibe-bar
 
 # 2. 安装依赖（在有 PyQt6 的 Python 环境中执行）
@@ -120,6 +127,7 @@ vibe-bar/
 ## 未来计划
 
 - [X] **Codex CLI 支持** — CC/CX 标识、独立卡片、共享 `state.json`
+- [X] **任务完成弹窗** — 完成/中断时展开 3 秒紧凑提示；悬停延迟关闭，连续完成事件排队显示
 - [X] **自由定位** — 左右拖动悬浮条，触碰屏幕边缘弹回中央，位置跨重启保留
 - [X] **卡片顺序记忆** — 拖拽排序后重启保持，以 cwd 为键持久化
 - [X] **流畅收起动画** — 卡片内容在收起后半段淡出、展开时淡入；MultiEffect layer 裁切确保全程底部圆角
