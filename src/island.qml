@@ -31,27 +31,149 @@ Window {
         property int  displayCount: 0
         property int  visibleRows: Math.max(1, Math.min(displayCount, 10))
         property int  expandedH: bodyPadding * 2 + visibleRows * slotH
+        property string surface: "sessions"
+        property bool finishSurfaceActive: surface === "finishNotice"
+        property int finishH: Math.round(104 * sf)
+        property int targetH: finishSurfaceActive ? finishH : expandedH
+
         property string notifySid: ""
-        property string notifyText: ""
+        property string notifyTitle: ""
+        property string notifyCwdName: ""
+        property string notifyPrompt: ""
         property string notifyReason: "completed"
+        property string notifySource: "claude"
+        property var notifyQueue: []
+        property bool notifyEntered: false
+        property bool clearFinishAfterCollapse: false
         property bool notifyIsError: notifyReason === "interrupted" || notifyReason === "stale"
-        property bool notifyVisible: notifyText.length > 0
+        property bool notifyVisible: notifyTitle.length > 0
 
         Component.onCompleted: displayCount = sessionsModel.sessionCount
 
+        function hasActiveInteraction() {
+            return hoverHandler.hovered
+                || islandDragH.active
+                || cardsList.cardDragging
+                || cardsList.cardHorzDragging
+                || emptyStateDragH.active
+        }
+
+        function hasActiveDrag() {
+            return islandDragH.active
+                || cardsList.cardDragging
+                || cardsList.cardHorzDragging
+                || emptyStateDragH.active
+        }
+
+        function enqueueFinishNotice(sid, reason, title, cwdName, prompt, source) {
+            var notice = {
+                sid: sid,
+                reason: reason,
+                title: title,
+                cwdName: cwdName,
+                prompt: prompt,
+                source: source
+            }
+            if ((finishSurfaceActive && notifyVisible) || hasActiveDrag()) {
+                var q = notifyQueue.slice()
+                q.push(notice)
+                notifyQueue = q
+                return
+            }
+            showFinishNotice(notice)
+        }
+
+        function showFinishNotice(notice) {
+            finishNoticeTimer.stop()
+            finishLeaveTimer.stop()
+            leaveTimer.stop()
+            expandTimer.stop()
+            clearFinishAfterCollapse = false
+            notifySid = notice.sid
+            notifyReason = notice.reason
+            notifyTitle = notice.title
+            notifyCwdName = notice.cwdName
+            notifyPrompt = notice.prompt
+            notifySource = notice.source
+            notifyEntered = hoverHandler.hovered
+            surface = "finishNotice"
+            if (!hasActiveDrag())
+                expanded = true
+            finishNoticeTimer.restart()
+        }
+
+        function clearFinishNotice() {
+            clearFinishAfterCollapse = false
+            notifySid = ""
+            notifyTitle = ""
+            notifyCwdName = ""
+            notifyPrompt = ""
+            notifyReason = "completed"
+            notifySource = "claude"
+            notifyEntered = false
+            surface = "sessions"
+        }
+
+        function showQueuedFinishNoticeIfIdle() {
+            if (finishSurfaceActive || hasActiveDrag() || notifyQueue.length === 0)
+                return false
+            var q = notifyQueue.slice()
+            var next = q.shift()
+            notifyQueue = q
+            showFinishNotice(next)
+            return true
+        }
+
+        function showNextFinishNoticeOrCollapse() {
+            if (notifyEntered && hoverHandler.hovered) {
+                return
+            }
+            if (notifyQueue.length > 0) {
+                var q = notifyQueue.slice()
+                var next = q.shift()
+                notifyQueue = q
+                showFinishNotice(next)
+                return
+            }
+            if (!hasActiveInteraction()) {
+                clearFinishAfterCollapse = true
+                expanded = false
+            } else {
+                clearFinishNotice()
+            }
+        }
+
+        function dismissFinishNoticeAfterLeave() {
+            finishNoticeTimer.stop()
+            notifyEntered = false
+            if (notifyQueue.length > 0) {
+                var q = notifyQueue.slice()
+                var next = q.shift()
+                notifyQueue = q
+                showFinishNotice(next)
+                return
+            }
+            if (!islandDragH.active && !cardsList.cardHorzDragging && !emptyStateDragH.active) {
+                clearFinishAfterCollapse = true
+                expanded = false
+            } else {
+                clearFinishNotice()
+            }
+        }
+
         Connections {
             target: bridge
-            function onCollapseRequested() { expandTimer.stop(); island.expanded = false }
-            function onSessionFinished(sid, reason, text) {
-                finishNoticeTimer.stop()
-                leaveTimer.stop()
+            function onCollapseRequested() {
                 expandTimer.stop()
-                island.notifySid = sid
-                island.notifyReason = reason
-                island.notifyText = text
-                if (!islandDragH.active)
-                    island.expanded = true
-                finishNoticeTimer.restart()
+                leaveTimer.stop()
+                if (island.finishSurfaceActive && island.notifyVisible)
+                    return
+                finishNoticeTimer.stop()
+                finishLeaveTimer.stop()
+                island.expanded = false
+            }
+            function onSessionFinished(sid, reason, title, cwdName, prompt, source) {
+                island.enqueueFinishNotice(sid, reason, title, cwdName, prompt, source)
             }
         }
 
@@ -72,15 +194,19 @@ Window {
 
         property real _maskH: 0   // last height committed to Win32 mask
 
-        height: expanded ? expandedH : collapsedH
+        height: expanded ? targetH : collapsedH
         Behavior on height {
             NumberAnimation {
                 id: heightAnim
                 duration: island.animDur; easing.type: Easing.OutCubic
                 onRunningChanged: {
-                    if (!running && island.expanded) {
-                        island._maskH = island.height
-                        bridge.onExpandStart(island.height)
+                    if (!running) {
+                        if (island.expanded) {
+                            island._maskH = island.height
+                            bridge.onExpandStart(island.height)
+                        } else if (island.clearFinishAfterCollapse) {
+                            island.clearFinishNotice()
+                        }
                     }
                 }
             }
@@ -95,8 +221,8 @@ Window {
         onExpandedChanged: {
             if (expanded) {
                 collapseShrinkTimer.stop()
-                _maskH = expandedH
-                bridge.onExpandStart(expandedH)
+                _maskH = targetH
+                bridge.onExpandStart(targetH)
             } else {
                 collapseShrinkTimer.restart()
             }
@@ -105,6 +231,12 @@ Window {
             if (expanded && height > _maskH) {
                 _maskH = height
                 bridge.onExpandStart(height)
+            }
+        }
+        onTargetHChanged: {
+            if (expanded && targetH > _maskH) {
+                _maskH = targetH
+                bridge.onExpandStart(targetH)
             }
         }
 
@@ -132,20 +264,40 @@ Window {
         HoverHandler {
             id: hoverHandler
             onHoveredChanged: {
-                if (hovered) { leaveTimer.stop(); expandTimer.restart() }
-                else          { expandTimer.stop(); if (!islandDragH.active && !cardsList.cardHorzDragging && !emptyStateDragH.active) leaveTimer.restart() }
+                if (island.finishSurfaceActive) {
+                    if (hovered) {
+                        leaveTimer.stop()
+                        finishLeaveTimer.stop()
+                        expandTimer.stop()
+                        island.notifyEntered = true
+                    } else {
+                        expandTimer.stop()
+                        if (!islandDragH.active && !cardsList.cardHorzDragging && !emptyStateDragH.active)
+                            finishLeaveTimer.restart()
+                    }
+                    return
+                }
+                if (hovered) {
+                    leaveTimer.stop()
+                    expandTimer.restart()
+                } else {
+                    expandTimer.stop()
+                    if (!islandDragH.active && !cardsList.cardHorzDragging && !emptyStateDragH.active)
+                        leaveTimer.restart()
+                }
             }
         }
         Timer { id: leaveTimer;  interval: 250; onTriggered: island.expanded = false }
         Timer { id: expandTimer; interval: 0;   onTriggered: island.expanded = true  }
         Timer {
             id: finishNoticeTimer
-            interval: 2500
-            onTriggered: {
-                island.notifyText = ""
-                if (!hoverHandler.hovered && !islandDragH.active && !cardsList.cardHorzDragging && !emptyStateDragH.active)
-                    island.expanded = false
-            }
+            interval: 3000
+            onTriggered: island.showNextFinishNoticeOrCollapse()
+        }
+        Timer {
+            id: finishLeaveTimer
+            interval: 120
+            onTriggered: island.dismissFinishNoticeAfterLeave()
         }
 
         DragHandler {
@@ -162,6 +314,7 @@ Window {
                     bridge.startIslandDrag()
                 } else {
                     bridge.endIslandDrag()
+                    if (island.showQueuedFinishNoticeIfIdle()) return
                     if (hoverHandler.hovered) expandTimer.restart()
                     else leaveTimer.restart()
                 }
@@ -225,7 +378,7 @@ Window {
             anchors { fill: parent; margins: island.bodyPadding }
             enabled: island.expanded
             opacity: {
-                var range = island.expandedH - island.collapsedH
+                var range = island.targetH - island.collapsedH
                 if (range <= 0) return island.expanded ? 1.0 : 0.0
                 var fadeStartH = island.collapsedH + range * 0.5
                 if (island.height >= fadeStartH) return 1.0
@@ -234,7 +387,7 @@ Window {
             }
 
             Rectangle {
-                visible: sessionsModel.sessionCount === 0
+                visible: sessionsModel.sessionCount === 0 && !island.finishSurfaceActive
                 anchors.centerIn: parent
                 width: parent.width
                 height: island.cardH
@@ -255,6 +408,7 @@ Window {
                             bridge.startIslandDrag()
                         } else {
                             bridge.endIslandDrag()
+                            if (island.showQueuedFinishNoticeIfIdle()) return
                             if (hoverHandler.hovered) expandTimer.restart()
                             else leaveTimer.restart()
                         }
@@ -277,10 +431,12 @@ Window {
                 anchors.fill: parent
                 spacing: 0
                 clip: true
+                visible: !island.finishSurfaceActive
                 model: sessionsModel
 
                 property real dragComp: 0
                 property int  dragSlot: -1
+                property bool cardDragging: false
                 property bool cardHorzDragging: false
 
                 // ── Card delegate ─────────────────────────────────────────────
@@ -346,6 +502,7 @@ Window {
                             onActiveChanged: {
                                 bridge.setDragging(active)
                                 if (active) {
+                                    cardsList.cardDragging = true
                                     _mode = 0
                                     cardsList.dragSlot = index
                                     cardsList.dragComp = 0
@@ -354,6 +511,8 @@ Window {
                                     cardsList.dragSlot = -1
                                     cardsList.cardHorzDragging = false
                                     _mode = 0
+                                    cardsList.cardDragging = false
+                                    if (island.showQueuedFinishNoticeIfIdle()) return
                                 }
                             }
                             onActiveTranslationChanged: {
@@ -490,41 +649,135 @@ Window {
                 }
             }
 
-            Rectangle {
-                id: finishNotice
+            Item {
+                id: finishSurface
                 z: 10
-                visible: island.notifyVisible && island.expanded
+                visible: island.finishSurfaceActive && island.expanded
                 opacity: visible ? 1.0 : 0.0
-                anchors {
-                    horizontalCenter: parent.horizontalCenter
-                    top: parent.top
-                    topMargin: Math.round(6 * island.sf)
-                }
-                width: Math.min(parent.width - Math.round(24 * island.sf),
-                                finishNoticeText.implicitWidth + Math.round(28 * island.sf))
-                height: Math.round(28 * island.sf)
-                radius: height / 2
-                color: island.notifyIsError ? "#2a0e0e" : "#0e2a1c"
-                border.width: 1
-                border.color: island.notifyIsError ? "#9f3d3d" : "#2f8f5b"
-                enabled: false
+                anchors.fill: parent
+                enabled: visible
 
                 Behavior on opacity { NumberAnimation { duration: 140 } }
 
-                Text {
-                    id: finishNoticeText
-                    anchors.centerIn: parent
-                    width: parent.width - Math.round(16 * island.sf)
-                    text: island.notifyText
-                    color: island.notifyIsError ? "#ffb3b3" : "#9ff0bf"
-                    horizontalAlignment: Text.AlignHCenter
-                    font {
-                        family: "Microsoft YaHei UI"
-                        pixelSize: Math.round(11 * island.sf)
-                        bold: true
+                Rectangle {
+                    anchors {
+                        fill: parent
+                        margins: Math.round(8 * island.sf)
                     }
-                    elide: Text.ElideRight
-                    maximumLineCount: 1
+                    radius: Math.round(14 * island.sf)
+                    color: island.notifyIsError ? "#241216" : "#102017"
+                    border.width: 1
+                    border.color: island.notifyIsError ? "#9f3d3d" : "#2f8f5b"
+
+                    Rectangle {
+                        id: finishIcon
+                        width: Math.round(34 * island.sf)
+                        height: width
+                        radius: width / 2
+                        anchors {
+                            left: parent.left
+                            leftMargin: Math.round(12 * island.sf)
+                            verticalCenter: parent.verticalCenter
+                        }
+                        color: island.notifyIsError ? "#5d2525" : "#1d5a39"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: island.notifyIsError ? "!" : "OK"
+                            color: island.notifyIsError ? "#ffb3b3" : "#9ff0bf"
+                            font {
+                                family: "Microsoft YaHei UI"
+                                pixelSize: Math.round((island.notifyIsError ? 18 : 10) * island.sf)
+                                bold: true
+                            }
+                        }
+                    }
+
+                    Text {
+                        id: finishTitle
+                        anchors {
+                            left: finishIcon.right
+                            leftMargin: Math.round(12 * island.sf)
+                            right: finishSourceBadge.left
+                            rightMargin: Math.round(8 * island.sf)
+                            top: parent.top
+                            topMargin: Math.round(16 * island.sf)
+                        }
+                        text: island.notifyTitle
+                        color: island.notifyIsError ? "#ffb3b3" : "#9ff0bf"
+                        elide: Text.ElideRight
+                        maximumLineCount: 1
+                        font {
+                            family: "Microsoft YaHei UI"
+                            pixelSize: Math.round(13 * island.sf)
+                            bold: true
+                        }
+                    }
+
+                    Rectangle {
+                        id: finishSourceBadge
+                        anchors {
+                            right: parent.right
+                            rightMargin: Math.round(12 * island.sf)
+                            top: parent.top
+                            topMargin: Math.round(15 * island.sf)
+                        }
+                        width: Math.round(34 * island.sf)
+                        height: Math.round(20 * island.sf)
+                        radius: Math.round(10 * island.sf)
+                        color: island.notifySource === "codex" ? "#1b2748" : "#402719"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: island.notifySource === "codex" ? "CX" : "CC"
+                            color: island.notifySource === "codex" ? "#9cb8ff" : "#ffb16d"
+                            font {
+                                family: "Microsoft YaHei UI"
+                                pixelSize: Math.round(10 * island.sf)
+                                bold: true
+                            }
+                        }
+                    }
+
+                    Text {
+                        id: finishCwd
+                        anchors {
+                            left: finishIcon.right
+                            leftMargin: Math.round(12 * island.sf)
+                            right: parent.right
+                            rightMargin: Math.round(12 * island.sf)
+                            top: finishTitle.bottom
+                            topMargin: Math.round(7 * island.sf)
+                        }
+                        text: island.notifyCwdName.length > 0 ? island.notifyCwdName : "Session"
+                        color: "#f2f4f8"
+                        elide: Text.ElideRight
+                        maximumLineCount: 1
+                        font {
+                            family: "Microsoft YaHei UI"
+                            pixelSize: Math.round(12 * island.sf)
+                            bold: true
+                        }
+                    }
+
+                    Text {
+                        anchors {
+                            left: finishIcon.right
+                            leftMargin: Math.round(12 * island.sf)
+                            right: parent.right
+                            rightMargin: Math.round(12 * island.sf)
+                            top: finishCwd.bottom
+                            topMargin: Math.round(5 * island.sf)
+                        }
+                        text: island.notifyPrompt.length > 0 ? island.notifyPrompt : island.notifySid
+                        color: "#9aa3b5"
+                        elide: Text.ElideRight
+                        maximumLineCount: 1
+                        font {
+                            family: "Microsoft YaHei UI"
+                            pixelSize: Math.round(11 * island.sf)
+                        }
+                    }
                 }
             }
         }
