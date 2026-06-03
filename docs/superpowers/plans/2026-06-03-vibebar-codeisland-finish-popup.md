@@ -4,6 +4,8 @@
 
 **Goal:** Upgrade VibeBar's current finish pill into a CodeIsland-inspired finish popup surface that opens when a task completes or is interrupted, holds while hovered, and queues rapid finish events.
 
+**Implementation Status (2026-06-03):** Implemented. Task 1 is committed as `62c76b3 feat: enrich finish notification payload`; Task 2 is committed as `2314117 feat: show finish popup surface`. The finish popup auto-dismiss interval is now `3000` ms. Validation passed with `python -m py_compile src\hook.py src\models.py src\ui_qml.py src\win32.py install.py`, `E:\anaconda\envs\vibebar\python.exe test_scenarios.py` (`158/158`), `git diff --check`, and final subagent review with no findings. The completion popup was visually confirmed during manual testing, and manual test sessions were cleaned up.
+
 **Architecture:** Keep VibeBar's existing hook and `finished_at` detection path. Extend the PyQt bridge signal to send enough session context for a richer QML popup, then replace the current overlay pill with a lightweight QML `finishNotice` surface, queue, and hover-aware collapse lifecycle.
 
 **Tech Stack:** Python 3, PyQt6, Qt Quick/QML, Windows Win32 mask helpers, existing `test_scenarios.py` regression script.
