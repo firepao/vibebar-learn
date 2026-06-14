@@ -453,6 +453,8 @@ Window {
                     required property bool   isBackground
                     required property string bgColor
                     required property string source
+                    required property string attentionLabel
+                    required property string attentionDetail
                     required property int    index
 
                     property bool _closing: false
@@ -584,13 +586,28 @@ Window {
                         }
 
                         Text {
+                            id: attentionBadge
+                            anchors {
+                                right: elapsedText.left
+                                rightMargin: Math.round(6 * island.sf)
+                                top: parent.top
+                                topMargin: Math.round(12 * island.sf)
+                            }
+                            visible: isAttention
+                            text: "ACTION"
+                            color: "#ffb3b3"
+                            font { pixelSize: Math.round(9 * island.sf); bold: true }
+                        }
+
+                        Text {
                             anchors {
                                 left: sourceBadge.right; leftMargin: Math.round(4 * island.sf)
-                                right: elapsedText.left; rightMargin: Math.round(4 * island.sf)
+                                right: isAttention ? attentionBadge.left : elapsedText.left
+                                rightMargin: Math.round(4 * island.sf)
                                 top: parent.top; topMargin: Math.round(14 * island.sf)
                             }
-                            text: cwdName
-                            color: "#f2f4f8"
+                            text: isAttention ? attentionLabel : cwdName
+                            color: isAttention ? "#ffb3b3" : "#f2f4f8"
                             font { family: "Microsoft YaHei UI"; pixelSize: Math.round(13 * island.sf); bold: true }
                             elide: Text.ElideRight
                         }
@@ -601,8 +618,8 @@ Window {
                                 right: closeBtn.left; rightMargin: Math.round(6 * island.sf)
                                 bottom: parent.bottom; bottomMargin: Math.round(12 * island.sf)
                             }
-                            text: lastPrompt
-                            color: "#9aa3b5"
+                            text: isAttention ? attentionDetail : lastPrompt
+                            color: isAttention ? "#ffc9c9" : "#9aa3b5"
                             font { family: "Microsoft YaHei UI"; pixelSize: Math.round(11 * island.sf) }
                             elide: Text.ElideRight
                             maximumLineCount: 1
@@ -643,6 +660,10 @@ Window {
                         TapHandler {
                             acceptedButtons: Qt.LeftButton
                             gesturePolicy: TapHandler.ReleaseWithinBounds
+                            onTapped: {
+                                if (isAttention)
+                                    bridge.jump(sid)
+                            }
                             onDoubleTapped: bridge.jump(sid)
                         }
                     }

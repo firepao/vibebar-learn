@@ -62,7 +62,7 @@ def cleanup_stale_sessions(state: dict) -> None:
         if sess.get("status") == "running" and age > stale_thresh:
             sess["status"] = "idle"
             sess["finish_reason"] = "stale"
-            sess.pop("needs_attention", None)
+            _clear_attention(sess)
             if not sess.get("finished_at"):
                 sess["finished_at"] = sess.get("last_update")
         elif sess.get("status") == "idle" and age > STALE_IDLE_PURGE_SEC:
@@ -84,6 +84,52 @@ def _ts_to_epoch(iso_ts: str) -> float:
         return datetime.fromisoformat(iso_ts).timestamp()
     except Exception:
         return 0.0
+
+
+ATTENTION_FIELDS = (
+    "attention_tool",
+    "attention_detail",
+    "attention_at",
+    "attention_jump_hwnd",
+    "attention_jump_title",
+    "attention_jump_pid",
+)
+
+
+def _clear_attention(sess: dict) -> None:
+    sess["needs_attention"] = False
+    for key in ATTENTION_FIELDS:
+        sess.pop(key, None)
+
+
+def _truncate_text(value: object, limit: int = 180) -> str:
+    text = str(value or "").strip()
+    return text if len(text) <= limit else text[: max(0, limit - 1)] + "…"
+
+
+def _approval_detail(payload: dict) -> str:
+    tool_input = payload.get("tool_input")
+    if isinstance(tool_input, dict):
+        for key in ("command", "pattern", "file_path", "path", "url"):
+            value = tool_input.get(key)
+            if value:
+                return _truncate_text(value)
+    for key in ("message", "reason", "prompt", "description"):
+        value = payload.get(key)
+        if value:
+            return _truncate_text(value)
+    return ""
+
+
+def _mark_attention(sess: dict, payload: dict, fallback_detail: str = "") -> None:
+    sess["needs_attention"] = True
+    tool = str(payload.get("tool_name") or payload.get("tool") or "").strip()
+    detail = _approval_detail(payload) or fallback_detail
+    if tool:
+        sess["attention_tool"] = _truncate_text(tool, 80)
+    if detail:
+        sess["attention_detail"] = _truncate_text(detail)
+    sess["attention_at"] = _now_iso()
 
 
 def load_state() -> dict:
@@ -219,7 +265,7 @@ def main() -> int:
                 sess["is_primary"] = False
         elif event == "UserPromptSubmit":
             sess.pop("user_closed", None)
-            sess["needs_attention"] = False
+            _clear_attention(sess)
             sess["status"] = "running"
             cutoff = (datetime.now() - timedelta(seconds=ORPHAN_SUBAGENT_TTL)).isoformat(timespec="seconds")
             active = [a for a in sess.get("active_subagent_ids", []) if a.get("ts", "") > cutoff]
@@ -239,7 +285,7 @@ def main() -> int:
                 if source_name == "codex":
                     sess["is_primary"] = True  # upgrade hidden CX to visible on real prompt
         elif event == "PermissionRequest":
-            sess["needs_attention"] = True
+            _mark_attention(sess, payload)
         elif event == "Notification":
             notif_type = (
                 payload.get("notification_type")
@@ -248,7 +294,7 @@ def main() -> int:
                 or ""
             )
             if notif_type.strip() == "permission_prompt":
-                sess["needs_attention"] = True
+                _mark_attention(sess, payload, "Permission prompt")
         elif event == "SessionEnd":
             sessions.pop(sid, None)
         elif event == "CwdChanged":
@@ -264,7 +310,7 @@ def main() -> int:
             sess["active_bash"] = False
             # Do NOT reset active_subagent_count here — SubagentStart/SubagentStop own it.
             # Resetting here caused a brief green flash before SubagentStart could fire.
-            sess["needs_attention"] = False
+            _clear_attention(sess)
         elif event == "SubagentStart" and source_name != "codex":
             agent_id = payload.get("agent_id", "")
             active = sess.setdefault("active_subagent_ids", [])
@@ -299,7 +345,7 @@ def main() -> int:
                 if sess.get("status") == "idle":
                     sess["status"] = "running"
         elif event in ("PermissionDenied", "PostToolUse") and not payload.get("agent_id"):
-            sess["needs_attention"] = False
+            _clear_attention(sess)
             if payload.get("tool_name") == "Bash":
                 sess["active_bash"] = False
         elif event == "PostToolUseFailure" and payload.get("tool_name") == "Bash" and not payload.get("agent_id"):

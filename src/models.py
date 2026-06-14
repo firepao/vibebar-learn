@@ -122,6 +122,8 @@ class SessionsModel(QAbstractListModel):
     IsAttentionRole = Qt.ItemDataRole.UserRole + 10
     IsBackgroundRole = Qt.ItemDataRole.UserRole + 11
     SourceRole       = Qt.ItemDataRole.UserRole + 12
+    AttentionLabelRole = Qt.ItemDataRole.UserRole + 13
+    AttentionDetailRole = Qt.ItemDataRole.UserRole + 14
 
     countChanged = pyqtSignal()
 
@@ -152,6 +154,8 @@ class SessionsModel(QAbstractListModel):
             self.IsAttentionRole: b"isAttention",
             self.IsBackgroundRole: b"isBackground",
             self.SourceRole:       b"source",
+            self.AttentionLabelRole: b"attentionLabel",
+            self.AttentionDetailRole: b"attentionDetail",
         }
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
@@ -171,6 +175,11 @@ class SessionsModel(QAbstractListModel):
         if role == self.IsAttentionRole:  return bool(s.get("needs_attention"))
         if role == self.IsBackgroundRole: return _is_background(s)
         if role == self.SourceRole:       return s.get("source", "claude")
+        if role == self.AttentionLabelRole:
+            tool = str(s.get("attention_tool") or "").strip()
+            return f"Needs approval: {tool}" if tool else "Needs approval"
+        if role == self.AttentionDetailRole:
+            return _truncate(s.get("attention_detail") or "Click to jump to the approval prompt", 96)
         return None
 
     def update_sessions(self, sessions: dict, order: list[str]) -> None:
@@ -285,16 +294,20 @@ class IslandBridge(QObject):
 
     @pyqtSlot(str)
     def jump(self, sid: str) -> None:
-        from win32 import find_vscode_hwnd_for_cwd, foreground_window, ensure_on_current_desktop
+        from win32 import find_vscode_hwnd_for_cwd, foreground_window, ensure_on_current_desktop, is_valid_window
         state = read_state()
-        cwd = state.get("sessions", {}).get(sid, {}).get("cwd", "") or ""
-        hwnd = 0
+        sess = state.get("sessions", {}).get(sid, {}) or {}
+        hwnd = int(sess.get("attention_jump_hwnd") or 0)
+        if hwnd and not is_valid_window(hwnd):
+            hwnd = 0
+        cwd = sess.get("cwd", "") or ""
         p = Path(cwd)
-        while str(p) != p.anchor and p.name:
-            hwnd = find_vscode_hwnd_for_cwd(str(p))
-            if hwnd:
-                break
-            p = p.parent
+        if not hwnd:
+            while str(p) != p.anchor and p.name:
+                hwnd = find_vscode_hwnd_for_cwd(str(p))
+                if hwnd:
+                    break
+                p = p.parent
         if not hwnd:
             return
         own = self._own_hwnd

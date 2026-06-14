@@ -73,6 +73,10 @@ user32.AllowSetForegroundWindow.restype = wintypes.BOOL
 
 user32.IsWindowVisible.argtypes = [wintypes.HWND]
 user32.IsWindowVisible.restype = wintypes.BOOL
+user32.IsWindow.argtypes = [wintypes.HWND]
+user32.IsWindow.restype = wintypes.BOOL
+user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+user32.GetWindowThreadProcessId.restype = wintypes.DWORD
 
 user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
 user32.GetWindowTextLengthW.restype = ctypes.c_int
@@ -379,6 +383,53 @@ def find_vscode_hwnd_for_cwd(cwd: str) -> int:
     except Exception:
         return 0
     return matches[0] if matches else 0
+
+
+def window_title(hwnd: int) -> str:
+    try:
+        if not hwnd or not user32.IsWindow(wintypes.HWND(hwnd)):
+            return ""
+        length = user32.GetWindowTextLengthW(wintypes.HWND(hwnd))
+        if length <= 0:
+            return ""
+        buf = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(wintypes.HWND(hwnd), buf, length + 1)
+        return buf.value or ""
+    except Exception:
+        return ""
+
+
+def window_pid(hwnd: int) -> int:
+    try:
+        pid = wintypes.DWORD(0)
+        user32.GetWindowThreadProcessId(wintypes.HWND(hwnd), ctypes.byref(pid))
+        return int(pid.value)
+    except Exception:
+        return 0
+
+
+def is_valid_window(hwnd: int) -> bool:
+    try:
+        return bool(hwnd and user32.IsWindow(wintypes.HWND(hwnd)) and user32.IsWindowVisible(wintypes.HWND(hwnd)))
+    except Exception:
+        return False
+
+
+def get_foreground_snapshot(exclude_hwnd: int = 0, exclude_pid: int = 0) -> dict:
+    try:
+        hwnd = int(user32.GetForegroundWindow())
+    except Exception:
+        hwnd = 0
+    if not hwnd or hwnd == int(exclude_hwnd or 0) or not is_valid_window(hwnd):
+        return {}
+    pid = window_pid(hwnd)
+    if exclude_pid and pid == int(exclude_pid):
+        return {}
+    return {
+        "hwnd": hwnd,
+        "title": window_title(hwnd),
+        "pid": pid,
+    }
 
 
 def get_cursor_pos() -> tuple[int, int]:

@@ -20,7 +20,7 @@ from win32 import (
     GWL_EXSTYLE, WS_EX_TOOLWINDOW, WS_EX_APPWINDOW,
     GetWindowLongPtr, SetWindowLongPtr,
     DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE,
-    set_island_mask,
+    set_island_mask, get_foreground_snapshot,
 )
 
 _BASE_ISLAND_W = 280
@@ -89,6 +89,7 @@ class VibeBarApp:
 
         self._last_finished_at: dict[str, str] = {}
         self._seen_finished_sids: set[str] = set()
+        self._last_attention_at: dict[str, str] = {}
         self._last_phys_wa = None
         self._own_hwnd = 0
         self._reposition_needed = False
@@ -234,6 +235,7 @@ class VibeBarApp:
                 self._last_cwd_order = new_cwd_order
 
         for sid, sess in sessions.items():
+            self._capture_attention_jump_target(sid, sess)
             finished_at = sess.get("finished_at") or ""
             last_seen = self._last_finished_at.get(sid, "")
             has_seen = sid in self._seen_finished_sids
@@ -253,9 +255,40 @@ class VibeBarApp:
             if sid not in sessions:
                 self._last_finished_at.pop(sid, None)
                 self._seen_finished_sids.discard(sid)
+                self._last_attention_at.pop(sid, None)
         for sid in list(self._seen_finished_sids):
             if sid not in sessions:
                 self._seen_finished_sids.discard(sid)
+
+    def _capture_attention_jump_target(self, sid: str, sess: dict) -> None:
+        if not sess.get("needs_attention"):
+            self._last_attention_at.pop(sid, None)
+            return
+        attention_at = str(sess.get("attention_at") or "")
+        if not attention_at or self._last_attention_at.get(sid) == attention_at:
+            return
+        self._last_attention_at[sid] = attention_at
+        if sess.get("attention_jump_hwnd"):
+            return
+        snap = get_foreground_snapshot(self._own_hwnd, os.getpid())
+        if not snap:
+            return
+        fd = _acquire_lock()
+        if fd is None:
+            return
+        try:
+            state = read_state()
+            target = state.get("sessions", {}).get(sid)
+            if not target or not target.get("needs_attention"):
+                return
+            if str(target.get("attention_at") or "") != attention_at:
+                return
+            target["attention_jump_hwnd"] = int(snap.get("hwnd") or 0)
+            target["attention_jump_title"] = str(snap.get("title") or "")
+            target["attention_jump_pid"] = int(snap.get("pid") or 0)
+            _save_state(state)
+        finally:
+            _release_lock(fd)
 
     def _flash_done(self, sid: str) -> None:
         old = self._flash_timers.pop(sid, None)

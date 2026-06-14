@@ -305,19 +305,33 @@ hook({"session_id": SID, "hook_event_name": "SessionStart", "cwd": "C:/dev/P", "
 hook({"session_id": SID, "hook_event_name": "PermissionRequest", "cwd": "C:/dev/P"})
 check("PermissionRequest: needs_attention=True", get_sess(SID).get("needs_attention") == True)
 
+hook({"session_id": SID, "hook_event_name": "PermissionRequest", "cwd": "C:/dev/P",
+      "tool_name": "Bash", "tool_input": {"command": "npm install && npm test"}})
+s = get_sess(SID)
+check("PermissionRequest: attention_tool saved", s.get("attention_tool") == "Bash", s.get("attention_tool"))
+check("PermissionRequest: command summary saved",
+      s.get("attention_detail") == "npm install && npm test", s.get("attention_detail"))
+check("PermissionRequest: attention_at saved", bool(s.get("attention_at")))
+
 hook({"session_id": SID, "hook_event_name": "PermissionDenied", "cwd": "C:/dev/P"})
 check("PermissionDenied: needs_attention=False", get_sess(SID).get("needs_attention") == False)
+check("PermissionDenied: clears attention detail", "attention_detail" not in get_sess(SID))
 
 hook({"session_id": SID, "hook_event_name": "PermissionRequest", "cwd": "C:/dev/P"})
 hook({"session_id": SID, "hook_event_name": "PostToolUse",
       "cwd": "C:/dev/P", "tool_name": "Read"})
 check("PostToolUse(无agent_id): needs_attention=False", get_sess(SID).get("needs_attention") == False)
+check("PostToolUse: clears attention tool", "attention_tool" not in get_sess(SID))
 
 # Notification permission_prompt 类型
 hook({"session_id": SID, "hook_event_name": "Notification",
-      "cwd": "C:/dev/P", "notification_type": "permission_prompt"})
+      "cwd": "C:/dev/P", "notification_type": "permission_prompt",
+      "message": "Claude needs permission to use Bash"})
 check("Notification(permission_prompt): needs_attention=True",
       get_sess(SID).get("needs_attention") == True)
+check("Notification(permission_prompt): attention detail fallback",
+      get_sess(SID).get("attention_detail") == "Claude needs permission to use Bash",
+      get_sess(SID).get("attention_detail"))
 
 hook({"session_id": SID, "hook_event_name": "Notification",
       "cwd": "C:/dev/P", "notification_type": "other_type"})
@@ -326,11 +340,13 @@ check("Notification(其他类型): needs_attention 不变（仍True）",
 
 hook({"session_id": SID, "hook_event_name": "Stop", "cwd": "C:/dev/P"})
 check("Stop: needs_attention=False", get_sess(SID).get("needs_attention") == False)
+check("Stop: clears attention_at", "attention_at" not in get_sess(SID))
 
 hook({"session_id": SID, "hook_event_name": "PermissionRequest", "cwd": "C:/dev/P"})
 hook({"session_id": SID, "hook_event_name": "UserPromptSubmit",
       "cwd": "C:/dev/P", "prompt": "x"})
 check("UserPromptSubmit: needs_attention=False", get_sess(SID).get("needs_attention") == False)
+check("UserPromptSubmit: clears attention detail", "attention_detail" not in get_sess(SID))
 
 cleanup(SID)
 
