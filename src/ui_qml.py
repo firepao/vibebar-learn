@@ -1,5 +1,5 @@
 from __future__ import annotations
-import ctypes, queue, sys, threading, time
+import ctypes, os, queue, sys, threading, time
 from ctypes import wintypes
 from datetime import datetime
 from pathlib import Path
@@ -17,7 +17,7 @@ from models import (
 )
 from win32 import (
     ensure_on_current_desktop, get_primary_work_area,
-    GWL_EXSTYLE, WS_EX_TOOLWINDOW, WS_EX_APPWINDOW,
+    GWL_EXSTYLE, WS_EX_TOOLWINDOW, WS_EX_APPWINDOW, WS_EX_NOACTIVATE,
     GetWindowLongPtr, SetWindowLongPtr,
     DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE,
     set_island_mask, get_foreground_snapshot,
@@ -90,8 +90,12 @@ class VibeBarApp:
         self._last_finished_at: dict[str, str] = {}
         self._seen_finished_sids: set[str] = set()
         self._last_attention_at: dict[str, str] = {}
+        self._last_session_prompt_at: dict[str, str] = {}
+        self._visible_sessions: dict[str, dict] = {}
         self._last_phys_wa = None
         self._own_hwnd = 0
+        self._overlay_hwnd = 0
+        self._last_overlay_sid = ""
         self._reposition_needed = False
         self._flash_timers: dict[str, QTimer] = {}
         self._saved_cwd_order: list = load_ui_config().get("card_order") or []
@@ -115,10 +119,23 @@ class VibeBarApp:
         self._position_window()
         QTimer.singleShot(200, self._setup_win32)
 
+        overlay_qml = Path(__file__).with_name("agent_overlay.qml")
+        self._engine.load(str(overlay_qml))
+        roots = self._engine.rootObjects()
+        self._overlay = roots[1] if len(roots) > 1 else None
+        if self._overlay is not None:
+            self._overlay.setProperty("visible", False)
+            QTimer.singleShot(250, self._setup_overlay_win32)
+
         self._consume_timer = QTimer()
         self._consume_timer.setInterval(100)
         self._consume_timer.timeout.connect(self._consume)
         self._consume_timer.start()
+
+        self._overlay_timer = QTimer()
+        self._overlay_timer.setInterval(250)
+        self._overlay_timer.timeout.connect(self._update_agent_overlay)
+        self._overlay_timer.start()
 
         self._worker = threading.Thread(target=self._worker_loop, daemon=True)
         self._worker.start()
@@ -155,6 +172,25 @@ class VibeBarApp:
         DwmSetWindowAttribute(wintypes.HWND(hwnd), DWMWA_BORDER_COLOR,
                               ctypes.byref(color), ctypes.sizeof(color))
         set_island_mask(hwnd, self.bridge._window_h_logical, self._collapsed_h, self._island_w)
+
+    def _setup_overlay_win32(self) -> None:
+        if self._overlay is None:
+            return
+        hwnd = int(self._overlay.winId())
+        self._overlay_hwnd = hwnd
+        ex = GetWindowLongPtr(wintypes.HWND(hwnd), GWL_EXSTYLE)
+        SetWindowLongPtr(
+            wintypes.HWND(hwnd),
+            GWL_EXSTYLE,
+            (ex | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE) & ~WS_EX_APPWINDOW,
+        )
+        color = ctypes.c_uint(DWMWA_COLOR_NONE)
+        DwmSetWindowAttribute(
+            wintypes.HWND(hwnd),
+            DWMWA_BORDER_COLOR,
+            ctypes.byref(color),
+            ctypes.sizeof(color),
+        )
 
     # ── state consumption ─────────────────────────────────────────────────────
 
@@ -226,6 +262,7 @@ class VibeBarApp:
 
         if not self.bridge._is_dragging:
             self.model.update_sessions(sessions, order)
+            self._visible_sessions = dict(sessions)
             if not self._initial_order_restored and sessions:
                 self._initial_order_restored = True
             new_cwd_order = self.model.get_cwd_order()
@@ -235,6 +272,7 @@ class VibeBarApp:
                 self._last_cwd_order = new_cwd_order
 
         for sid, sess in sessions.items():
+            self._capture_session_jump_target(sid, sess)
             self._capture_attention_jump_target(sid, sess)
             finished_at = sess.get("finished_at") or ""
             last_seen = self._last_finished_at.get(sid, "")
@@ -256,10 +294,159 @@ class VibeBarApp:
                 self._last_finished_at.pop(sid, None)
                 self._seen_finished_sids.discard(sid)
                 self._last_attention_at.pop(sid, None)
+                self._last_session_prompt_at.pop(sid, None)
         for sid in list(self._seen_finished_sids):
             if sid not in sessions:
                 self._seen_finished_sids.discard(sid)
 
+    def _session_overlay_state(self, sess: dict) -> str:
+        if sess.get("status") == STATUS_RUNNING:
+            return "running"
+        if sess.get("active_subagent_count", 0) > 0 or sess.get("active_bash"):
+            return "background"
+        return "idle"
+
+    def _is_overlay_active(self, sess: dict) -> bool:
+        return bool(
+            sess.get("needs_attention")
+            or sess.get("status") == STATUS_RUNNING
+            or sess.get("active_subagent_count", 0) > 0
+            or sess.get("active_bash")
+        )
+
+    def _best_overlay_session(self) -> tuple[str, dict] | None:
+        order = self.model.get_order()
+        rows = self._visible_sessions
+        candidates = [(sid, rows[sid]) for sid in order if sid in rows and self._is_overlay_active(rows[sid])]
+        if not candidates:
+            candidates = [(sid, s) for sid, s in rows.items() if self._is_overlay_active(s)]
+        if not candidates:
+            return None
+
+        def priority(item: tuple[str, dict]) -> int:
+            _sid, sess = item
+            if sess.get("needs_attention"):
+                return 0
+            if sess.get("status") == STATUS_RUNNING:
+                return 1
+            return 2
+
+        candidates.sort(key=priority)
+        return candidates[0]
+
+    def _window_matches_session(self, snap: dict, sid: str, sess: dict) -> int:
+        hwnd = int(snap.get("hwnd") or 0)
+        title = str(snap.get("title") or "").lower()
+        if not hwnd:
+            return 0
+        for key in ("attention_jump_hwnd", "session_jump_hwnd"):
+            target_hwnd = int(sess.get(key) or 0)
+            if target_hwnd and target_hwnd == hwnd:
+                return 100
+        cwd_name = str(sess.get("cwd_name") or "").strip().lower()
+        cwd = str(sess.get("cwd") or "").strip()
+        cwd_base = Path(cwd).name.lower() if cwd else ""
+        names = [n for n in (cwd_name, cwd_base) if n]
+        if any(n in title for n in names):
+            score = 60
+            source = str(sess.get("source") or "").lower()
+            if source and source in title:
+                score += 10
+            return score
+        return 0
+
+    def _is_foreground_agent_page(self, snap: dict) -> bool:
+        if not snap:
+            return False
+        hwnd = int(snap.get("hwnd") or 0)
+        if hwnd and hwnd == self._overlay_hwnd:
+            return False
+        title = str(snap.get("title") or "").lower()
+        if "codex" in title or "claude" in title:
+            return True
+        if any(self._window_matches_session(snap, sid, sess) for sid, sess in self._visible_sessions.items()):
+            return True
+        terminal_host = any(
+            marker in title
+            for marker in ("terminal", "powershell", "command prompt", "cmd.exe", "windows terminal")
+        )
+        return terminal_host and len([s for s in self._visible_sessions.values() if self._is_overlay_active(s)]) == 1
+
+    def _position_agent_overlay(self) -> None:
+        if self._overlay is None or bool(self._overlay.property("dragging")):
+            return
+        screen = QApplication.primaryScreen()
+        ag = screen.availableGeometry()
+        width = int(self._overlay.property("width") or round(76 * self._ui_scale))
+        height = int(self._overlay.property("height") or width)
+        margin = int(18 * self._ui_scale)
+        cfg = load_ui_config()
+        saved_x = cfg.get("agent_overlay_x")
+        saved_y = cfg.get("agent_overlay_y")
+        default_x = ag.right() - width - margin + 1
+        default_y = ag.bottom() - height - margin + 1
+        try:
+            x = int(saved_x) if saved_x is not None else default_x
+            y = int(saved_y) if saved_y is not None else default_y
+        except Exception:
+            x, y = default_x, default_y
+        x = max(ag.left(), min(x, ag.right() - width + 1))
+        y = max(ag.top(), min(y, ag.bottom() - height + 1))
+        self._overlay.setProperty("x", x)
+        self._overlay.setProperty("y", y)
+
+    def _update_agent_overlay(self) -> None:
+        if self._overlay is None:
+            return
+        if bool(self._overlay.property("dragging")):
+            return
+        best = self._best_overlay_session()
+        if not best:
+            self._overlay.setProperty("visible", False)
+            self._last_overlay_sid = ""
+            return
+        snap = get_foreground_snapshot(self._own_hwnd, os.getpid())
+        if self._is_foreground_agent_page(snap):
+            self._overlay.setProperty("visible", False)
+            self._last_overlay_sid = ""
+            return
+        sid, sess = best
+        self._position_agent_overlay()
+        self._overlay.setProperty("sid", sid)
+        self._overlay.setProperty("agentSource", str(sess.get("source") or "claude"))
+        self._overlay.setProperty("agentState", self._session_overlay_state(sess))
+        self._overlay.setProperty("needsAttention", bool(sess.get("needs_attention")))
+        self._overlay.setProperty("visible", True)
+        self._last_overlay_sid = sid
+
+    def _capture_session_jump_target(self, sid: str, sess: dict) -> None:
+        if not self._is_overlay_active(sess):
+            self._last_session_prompt_at.pop(sid, None)
+            return
+        marker = str(sess.get("prompt_at") or sess.get("last_update") or "")
+        if not marker or self._last_session_prompt_at.get(sid) == marker:
+            return
+        self._last_session_prompt_at[sid] = marker
+        snap = get_foreground_snapshot(self._own_hwnd, os.getpid())
+        if not snap or int(snap.get("hwnd") or 0) == self._overlay_hwnd:
+            return
+        fd = _acquire_lock()
+        if fd is None:
+            return
+        try:
+            state = read_state()
+            target = state.get("sessions", {}).get(sid)
+            if not target:
+                return
+            target_marker = str(target.get("prompt_at") or target.get("last_update") or "")
+            if target_marker != marker:
+                return
+            target["session_jump_hwnd"] = int(snap.get("hwnd") or 0)
+            target["session_jump_title"] = str(snap.get("title") or "")
+            target["session_jump_pid"] = int(snap.get("pid") or 0)
+            _save_state(state)
+        finally:
+            _release_lock(fd)
     def _capture_attention_jump_target(self, sid: str, sess: dict) -> None:
         if not sess.get("needs_attention"):
             self._last_attention_at.pop(sid, None)

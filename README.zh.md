@@ -22,7 +22,9 @@ Windows 悬浮条，Dynamic Island 风格，实时展示所有 Claude Code 和 C
 - **悬停展开** — 每个会话显示项目名、最近提示词、耗时
 - **CC / CX 标识** — 卡片标注 CC（Claude Code，橙色）或 CX（Codex CLI，蓝色），一眼区分来源
 - **任务完成弹窗** — Claude Code 或 Codex 任务完成/中断时，灵动岛会展开 3 秒的紧凑提示；鼠标悬停会延迟关闭，连续完成事件会排队显示
-- **跳转窗口** — 双击卡片将对应 VS Code 窗口置于前台
+- **权限 / 确认提醒** — PermissionRequest、确认类提示会变红，并保留工具名和命令摘要
+- **Agent Halo 状态环** — 一个可拖动的屏幕级圆环；当 Claude/Codex 有运行、后台或待确认状态，而你离开 agent 页面时显示；点击可跳回对应窗口
+- **跳转窗口** — 双击卡片、点击待确认卡片或点击 Halo，都可将捕获到的 agent / VS Code 窗口置于前台
 - **拖拽排序** — 按优先级排列会话
 - **左右滑动定位** — 拖动悬浮条自由移动位置，滑到屏幕边缘自动弹回中央，位置跨重启保留
 - **零任务栏占用** — 通过 `SetWindowRgn` 使透明区域鼠标穿透
@@ -40,7 +42,7 @@ Windows 悬浮条，Dynamic Island 风格，实时展示所有 Claude Code 和 C
 ```powershell
 # 1. 克隆仓库
 git clone https://github.com/firepao/vibebar-learn.git
-cd vibe-bar
+cd vibebar-learn
 
 # 2. 安装依赖（在有 PyQt6 的 Python 环境中执行）
 pip install -r requirements.txt
@@ -85,11 +87,17 @@ cscript.exe vibebar.vbs
 | `Stop` | 标记空闲，返回 `{"continue": true}` |
 | `SessionEnd` | Codex 进程退出时立即删除会话 |
 | `PreToolUse` / `PostToolUse` / `PostToolUseFailure` | 仅 Bash 工具触发 — 追踪活跃 Bash、空闲升为运行中；通过 `agent_id` 过滤子代理事件 |
-| `PermissionRequest` | 红点，需要关注 |
+| `PermissionRequest` | 红点，需要关注；记录前台窗口用于点击跳回 |
 
 > `install.py` 幂等，重复运行安全，不会重复添加 hook 条目。
 
 > 如果你已有其他 hook，install.py 只替换 VibeBar 条目，不影响其他配置。
+
+检查当前安装状态，不重写 hook：
+
+```powershell
+python install.py --check
+```
 
 ## 调试模式
 
@@ -116,7 +124,8 @@ vibe-bar/
 ├── src/
 │   ├── hook.py       # Hook 入口 — 读取 stdin JSON，写入 state.json
 │   ├── ui_qml.py     # 主进程 — 窗口、worker 线程、state 消费
-│   ├── island.qml    # QML UI — 动画、会话卡片、拖拽排序
+│   ├── island.qml    # 主灵动岛 UI — 动画、会话卡片、拖拽排序
+│   ├── agent_overlay.qml # 可拖动的屏幕级 Halo 状态环
 │   ├── models.py     # SessionsModel + IslandBridge（Python ↔ QML）
 │   └── win32.py      # Win32 绑定 — HWND、DWM、SetWindowRgn、显示器
 ├── install.py        # 一次性安装 — 写入 .python-path + 注入 hooks
@@ -137,6 +146,8 @@ vibe-bar/
 - [X] **Codex hook 可靠性** — 直接调用 `python.exe --source=codex` 替代 PowerShell 包装层；`readline()` 修复 stdin 阻塞；PreToolUse/PostToolUse 限定为仅 Bash 工具触发，消除超时风暴
 - [X] **`/goal` 紫色圆点** — PreToolUse Bash 将 idle 升为 running，通过 `/goal` 启动的 Codex 任务正确显示运行色
 - [X] **流畅删卡动画** — 收缩动画期间 Win32 mask 保持旧尺寸，动画结束后才更新，消除"先裁剪再下移"视觉 bug
+- [X] **权限跳转目标** — 权限/确认提示保留工具详情，并点击跳回捕获到的 agent 窗口
+- [X] **屏幕级 Agent Halo** — 离开活跃 agent 页面时显示可拖动圆环，点击跳回对应会话
 
 ## 许可证
 

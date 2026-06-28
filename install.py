@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -66,10 +67,51 @@ def _q(p: str) -> str:
 
 
 def find_pythonw() -> str:
+    existing = _existing_pythonw()
+    if existing:
+        return existing
     pythonw = Path(sys.executable).parent / "pythonw.exe"
     if pythonw.exists():
         return str(pythonw)
     return sys.executable
+
+
+def _python_console_exe(python_path: Path) -> Path:
+    if python_path.name.lower() == "pythonw.exe":
+        return python_path.with_name("python.exe")
+    return python_path
+
+
+def _has_pyqt6(python_path: Path) -> bool:
+    if not python_path.exists():
+        return False
+    console = _python_console_exe(python_path)
+    if not console.exists():
+        console = python_path
+    try:
+        proc = subprocess.run(
+            [str(console), "-c", "import PyQt6"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            check=False,
+        )
+    except Exception:
+        return False
+    return proc.returncode == 0
+
+
+def _existing_pythonw() -> str:
+    try:
+        raw = PYTHON_PATH_FILE.read_text(encoding="utf-8").strip()
+    except Exception:
+        return ""
+    if not raw:
+        return ""
+    python_path = Path(raw)
+    if _has_pyqt6(python_path):
+        return str(python_path)
+    return ""
 
 
 def ensure_state_dir() -> None:
@@ -84,6 +126,10 @@ def write_python_path(python_path: str) -> None:
 
 def _is_vibe_entry(cmd: str) -> bool:
     return any(s.lower() in cmd.lower() for s in _SENTINEL)
+
+
+def _is_vibe_hook(hook: dict) -> bool:
+    return isinstance(hook, dict) and _is_vibe_entry(str(hook.get("command", "")))
 
 
 def _load_hooks_json(path: Path) -> dict:
@@ -154,9 +200,67 @@ def inject_codex_hooks(python_path: str) -> None:
     print(f"[ok] codex config updated: {CODEX_CONFIG_PATH}")
 
 
+def _check_hook_file(path: Path, events: dict, label: str) -> bool:
+    if not path.exists():
+        print(f"[missing] {label}: {path}")
+        return False
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        print(f"[invalid] {label}: {path} ({e})")
+        return False
+
+    hooks_root = data.get("hooks", {})
+    missing: list[str] = []
+    for event in events:
+        groups = hooks_root.get(event, [])
+        if not isinstance(groups, list) or not any(
+            _is_vibe_hook(hook)
+            for group in groups if isinstance(group, dict)
+            for hook in group.get("hooks", []) if isinstance(group.get("hooks", []), list)
+        ):
+            missing.append(event)
+
+    if missing:
+        print(f"[missing] {label} VibeBar hooks: {', '.join(missing)}")
+        return False
+    print(f"[ok] {label} VibeBar hooks: {path}")
+    return True
+
+
+def check_install() -> int:
+    print("VibeBar check\n")
+    ok = True
+    ok = _check_hook_file(SETTINGS_PATH, HOOK_EVENTS, "Claude") and ok
+    ok = _check_hook_file(CODEX_HOOKS_PATH, CODEX_HOOK_EVENTS, "Codex") and ok
+
+    python_path = ""
+    if PYTHON_PATH_FILE.exists():
+        python_path = PYTHON_PATH_FILE.read_text(encoding="utf-8").strip()
+    if python_path and Path(python_path).exists():
+        print(f"[ok] launcher Python: {python_path}")
+    else:
+        print(f"[missing] launcher Python path: {PYTHON_PATH_FILE}")
+        ok = False
+
+    state_file = STATE_DIR / "state.json"
+    if state_file.exists():
+        print(f"[ok] state file: {state_file}")
+    else:
+        print(f"[missing] state file: {state_file}")
+
+    return 0 if ok else 1
+
+
 def main() -> None:
+    if "--check" in sys.argv[1:]:
+        raise SystemExit(check_install())
+
     print("VibeBar setup\n")
     python_path = find_pythonw()
+    if not _has_pyqt6(Path(python_path)):
+        print("[warn] Selected Python does not have PyQt6 installed.")
+        print("       VibeBar hooks will work, but vibebar.vbs may not launch the UI.")
     print(f"  Python: {python_path}")
     print(f"  Repo:   {REPO_DIR}\n")
 

@@ -22,7 +22,9 @@ Hover to expand — see which projects are running, what was last asked, and how
 - **Hover to expand** — per-session cards with project name, last prompt, elapsed time
 - **CC / CX badges** — cards labeled CC (Claude Code, orange) or CX (Codex CLI, blue) so you always know which tool owns a session
 - **Finish popup surface** — task completion or interruption opens a compact island popup for 3 seconds; hovering keeps it open, and rapid finish events are queued instead of overwriting each other
-- **Jump to window** — double-click a card to bring VS Code into focus
+- **Approval / confirmation attention** — permission prompts and confirmation requests turn the session red and preserve command/context text
+- **Agent halo overlay** — a draggable screen-level status ring appears when an active Claude/Codex session needs attention or is running while you are away from the agent page; click it to jump back
+- **Jump to window** — double-click a card, attention card, or halo overlay to bring the captured agent/VS Code window into focus
 - **Drag to reorder** — arrange sessions by priority
 - **Slide to reposition** — drag the bar left or right to move it anywhere on screen; drag to either edge and it springs back to center, position persists across restarts
 - **Zero taskbar footprint** — uses `SetWindowRgn` so transparent areas pass clicks through
@@ -40,7 +42,7 @@ Hover to expand — see which projects are running, what was last asked, and how
 ```powershell
 # 1. Clone
 git clone https://github.com/firepao/vibebar-learn.git
-cd vibe-bar
+cd vibebar-learn
 
 # 2. Install dependency
 pip install -r requirements.txt
@@ -72,7 +74,7 @@ To quit: **right-click double-click** anywhere on the bar.
 | `CwdChanged` | Update card title in real-time when the working directory changes mid-session |
 | `PreToolUse` | Detect Bash tool activity (blue dot); guarded by `agent_id` so subagent tool calls don't pollute parent session state |
 | `PostToolUse` / `PostToolUseFailure` | Clear Bash activity flag; same `agent_id` guard |
-| `PermissionRequest` / `Notification` | Red dot — needs attention |
+| `PermissionRequest` / `Notification` | Red dot — needs attention; captures the foreground window for click-to-jump |
 | `PermissionDenied` | Clear attention flag |
 | `SubagentStart` / `SubagentStop` | Track background agent count (blue dot); if `agent_type` contains `codex`, record a pending rescue entry (keyed by `cwd`, expires in 60 s) so the next Codex `SessionStart` for that cwd auto-hides itself |
 
@@ -85,11 +87,17 @@ To quit: **right-click double-click** anywhere on the bar.
 | `Stop` | Mark idle, return `{"continue": true}` |
 | `SessionEnd` | Delete session immediately when Codex process exits |
 | `PreToolUse` / `PostToolUse` / `PostToolUseFailure` | Bash-only — track active Bash tool, upgrade idle→running; guarded by `agent_id` to ignore subagent events |
-| `PermissionRequest` | Red dot — needs attention |
+| `PermissionRequest` | Red dot — needs attention; captures the foreground window for click-to-jump |
 
 > **Note:** `install.py` is idempotent — re-running it refreshes hook paths safely without duplicating entries.
 
 > **If you already have other hooks** for these events, `install.py` preserves them and only replaces the VibeBar entry.
+
+Check an existing installation without rewriting hooks:
+
+```powershell
+python install.py --check
+```
 
 ## Debug mode
 
@@ -116,7 +124,8 @@ vibe-bar/
 ├── src/
 │   ├── hook.py       # Hook entry point — reads stdin JSON, writes state.json
 │   ├── ui_qml.py     # Main process — window, worker thread, state consumption
-│   ├── island.qml    # QML UI — animation, session cards, drag-to-reorder
+│   ├── island.qml    # Main island UI — animation, session cards, drag-to-reorder
+│   ├── agent_overlay.qml # Draggable screen-level halo indicator
 │   ├── models.py     # SessionsModel + IslandBridge (Python ↔ QML)
 │   └── win32.py      # Win32 bindings — HWND, DWM, SetWindowRgn, monitor
 ├── install.py        # One-time setup — writes .python-path + injects hooks
@@ -162,10 +171,12 @@ cscript.exe vibebar.vbs
 - [x] **Subagent hook isolation** — `agent_id` guard on `PreToolUse`/`PostToolUse`/`PostToolUseFailure` prevents background subagent tool events from polluting parent session state, fixing the blue→purple regression
 - [x] **Instant card cleanup on exit** — `SessionEnd` hook deletes the session immediately when Claude Code or Codex exits, instead of leaving an idle card for up to 4 hours
 - [x] **Live directory tracking** — `CwdChanged` hook keeps the card title accurate when the user navigates to a different directory mid-session
+- [x] **Approval jump target** — permission/confirmation prompts preserve tool detail and click back to the captured agent window
+- [x] **Screen-level agent halo** — draggable status ring appears away from active agent pages and jumps back to the relevant session
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=WWeellkkiinn/vibe-bar&type=Date)](https://star-history.com/#WWeellkkiinn/vibe-bar&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=firepao/vibebar-learn&type=Date)](https://star-history.com/#firepao/vibebar-learn&Date)
 
 ## License
 

@@ -68,6 +68,9 @@ def _save_card_order(card_order: list) -> None:
 def _save_island_x(x: int) -> None:
     _save_ui_config({"island_x": x})
 
+def _save_agent_overlay_pos(x: int, y: int) -> None:
+    _save_ui_config({"agent_overlay_x": x, "agent_overlay_y": y})
+
 def read_state() -> dict:
     try: return json.loads(STATE_PATH.read_text(encoding="utf-8"))
     except Exception: return {"sessions": {}}
@@ -297,7 +300,7 @@ class IslandBridge(QObject):
         from win32 import find_vscode_hwnd_for_cwd, foreground_window, ensure_on_current_desktop, is_valid_window
         state = read_state()
         sess = state.get("sessions", {}).get(sid, {}) or {}
-        hwnd = int(sess.get("attention_jump_hwnd") or 0)
+        hwnd = int(sess.get("attention_jump_hwnd") or sess.get("session_jump_hwnd") or 0)
         if hwnd and not is_valid_window(hwnd):
             hwnd = 0
         cwd = sess.get("cwd", "") or ""
@@ -314,6 +317,10 @@ class IslandBridge(QObject):
         if own:
             ensure_on_current_desktop(own, hwnd)
         foreground_window(hwnd)
+
+    @pyqtSlot(int, int)
+    def saveAgentOverlayPosition(self, x: int, y: int) -> None:
+        _save_agent_overlay_pos(int(x), int(y))
 
     @pyqtSlot(str)
     def closeSession(self, sid: str) -> None:

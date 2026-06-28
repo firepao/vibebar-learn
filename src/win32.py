@@ -83,6 +83,8 @@ user32.GetWindowTextLengthW.restype = ctypes.c_int
 
 user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
 user32.GetWindowTextW.restype = ctypes.c_int
+user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+user32.GetWindowRect.restype = wintypes.BOOL
 
 user32.SwitchToThisWindow.argtypes = [wintypes.HWND, wintypes.BOOL]
 user32.SwitchToThisWindow.restype = None
@@ -189,6 +191,8 @@ GWL_STYLE = -16
 GWL_EXSTYLE = -20
 WS_EX_TOOLWINDOW = 0x00000080
 WS_EX_APPWINDOW  = 0x00040000
+WS_EX_TRANSPARENT = 0x00000020
+WS_EX_NOACTIVATE = 0x08000000
 WS_CAPTION = 0x00C00000
 WS_THICKFRAME = 0x00040000
 WS_MINIMIZEBOX = 0x00020000
@@ -408,6 +412,18 @@ def window_pid(hwnd: int) -> int:
         return 0
 
 
+def window_rect(hwnd: int) -> tuple[int, int, int, int] | None:
+    try:
+        if not hwnd or not user32.IsWindow(wintypes.HWND(hwnd)):
+            return None
+        rect = wintypes.RECT()
+        if not user32.GetWindowRect(wintypes.HWND(hwnd), ctypes.byref(rect)):
+            return None
+        return int(rect.left), int(rect.top), int(rect.right), int(rect.bottom)
+    except Exception:
+        return None
+
+
 def is_valid_window(hwnd: int) -> bool:
     try:
         return bool(hwnd and user32.IsWindow(wintypes.HWND(hwnd)) and user32.IsWindowVisible(wintypes.HWND(hwnd)))
@@ -425,11 +441,15 @@ def get_foreground_snapshot(exclude_hwnd: int = 0, exclude_pid: int = 0) -> dict
     pid = window_pid(hwnd)
     if exclude_pid and pid == int(exclude_pid):
         return {}
-    return {
+    snap = {
         "hwnd": hwnd,
         "title": window_title(hwnd),
         "pid": pid,
     }
+    rect = window_rect(hwnd)
+    if rect:
+        snap["rect"] = rect
+    return snap
 
 
 def get_cursor_pos() -> tuple[int, int]:
